@@ -1,3 +1,8 @@
+    document.getElementById("edTestMode").checked = p.showTestMode !== false;
+  }
+
+  async function saveSettings() {
+    const slug = document.getElementById("edSlug").value.trim().toLowerCase();
     if (!slug) {
       alert("請填寫公開代碼");
       return;
@@ -186,6 +191,3 @@
       closeLocModal();
       renderLocList();
     } catch (e) {
-      alert(e.message);
-    } finally {
-      StudentUI.showLoading(false);
