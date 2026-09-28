@@ -10,9 +10,10 @@ window.StudentUI = (function () {
   let lastReportedCoords = null;
   let lastGpsReportAt = 0;
   let gpsWatchStarted = false;
+  let gpsAutoTimer = null;
   let testMode = false;
   let currentLocId = null;
-  let draftAnswers = {};
+  let draftAnswers = {}; // locationId -> { qId: value }
 
   const DRAFT_PREFIX = "gpsgame2_draft_";
 
@@ -50,6 +51,26 @@ window.StudentUI = (function () {
     return new Set((teamSession && teamSession.completedLocationIds) || []);
   }
 
+  function isEditUnlocked(locId) {
+    const map = (teamSession && teamSession.unlockedEdits) || {};
+    return !!map[locId];
+  }
+
+  function isSubmissionLocked(locId) {
+    if (!completedSet().has(locId)) return false;
+    return !isEditUnlocked(locId);
+  }
+
+  function answersForLocation(locId) {
+    const fromSession =
+      teamSession &&
+      teamSession.locationAnswers &&
+      teamSession.locationAnswers[locId];
+    if (fromSession && typeof fromSession === "object") return fromSession;
+    return draftAnswers[locId] || {};
+  }
+
+
   function isLocComplete(locId) {
     if (completedSet().has(locId)) return true;
     const loc = locations.find((l) => l.id === locId);
@@ -65,7 +86,8 @@ window.StudentUI = (function () {
     locations.forEach((loc, i) => {
       const done = isLocComplete(loc.id);
       const sq = document.createElement("div");
-      sq.className = "progress-square " + (done ? "filled" : "empty");
+      sq.className =
+        "progress-square " + (done ? "filled" : "empty");
       sq.title = loc.name + (done ? "（已完成）" : "（未完成）");
       sq.textContent = String(i + 1);
       el.appendChild(sq);
@@ -93,6 +115,7 @@ window.StudentUI = (function () {
     showHub();
     refreshGPS();
     startGpsWatch();
+    startGpsAutoInterval();
   }
 
   function showView(id) {
@@ -218,7 +241,7 @@ window.StudentUI = (function () {
         loc.lat,
         loc.lng
       );
-      if (distance <= r) unlocked = true;
+        if (distance <= r) unlocked = true;
     }
 
     const lockBanner = document.getElementById("locLockBanner");
@@ -226,7 +249,7 @@ window.StudentUI = (function () {
     if (unlocked) {
       lockBanner.classList.add("hidden");
       qSection.classList.remove("hidden");
-      renderQuestions(loc);
+      renderQuestions(loc, isSubmissionLocked(loc.id));
     } else {
       lockBanner.classList.remove("hidden");
       qSection.classList.add("hidden");
@@ -242,10 +265,33 @@ window.StudentUI = (function () {
     updateHeader();
   }
 
-  function renderQuestions(loc) {
+  function renderQuestions(loc, readOnly) {
     const container = document.getElementById("locQuestions");
     container.innerHTML = "";
+    if (!draftAnswers[loc.id] || !Object.keys(draftAnswers[loc.id]).length) {
+      const seeded = answersForLocation(loc.id);
+      if (seeded && Object.keys(seeded).length) {
+        draftAnswers[loc.id] = Object.assign({}, seeded);
+        saveDrafts();
+      }
+    }
     const answers = draftAnswers[loc.id] || {};
+    const lockedNote = document.getElementById("locLockedNote");
+    if (lockedNote) {
+      lockedNote.classList.toggle("hidden", !readOnly);
+    }
+    const submitBtn = document.getElementById("btnSubmitLoc");
+    if (submitBtn) {
+      if (readOnly) {
+        submitBtn.classList.add("hidden");
+      } else {
+        submitBtn.classList.remove("hidden");
+        const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
+        submitBtn.innerHTML = isUpdate
+          ? '<i class="fa-solid fa-rotate"></i> 更新此地區答案'
+          : '<i class="fa-solid fa-paper-plane"></i> 提交此地區答案';
+      }
+    }
     (loc.questions || [])
       .slice()
       .sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -269,14 +315,19 @@ window.StudentUI = (function () {
           html += '<div class="space-y-1">';
           q.options.forEach((opt) => {
             const checked = saved === opt ? "checked" : "";
+            const dis = readOnly ? "disabled" : "";
             html +=
-              '<label class="flex items-start gap-2 py-1.5 px-2 rounded-lg hover:bg-white cursor-pointer text-sm">' +
+              '<label class="flex items-start gap-2 py-1.5 px-2 rounded-lg ' +
+              (readOnly ? "" : "hover:bg-white cursor-pointer ") +
+              'text-sm">' +
               '<input type="radio" name="q_' +
               escapeAttr(q.id) +
               '" value="' +
               escapeAttr(opt) +
               '" class="mt-1" ' +
               checked +
+              " " +
+              dis +
               "> <span>" +
               escapeHtml(opt) +
               "</span></label>";
@@ -286,12 +337,15 @@ window.StudentUI = (function () {
           html +=
             '<textarea data-qid="' +
             escapeAttr(q.id) +
-            '" rows="2" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…">' +
+            '" rows="2" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…" ' +
+            (readOnly ? "readonly" : "") +
+            ">" +
             escapeHtml(saved) +
             "</textarea>";
         }
         box.innerHTML = html;
         container.appendChild(box);
+        if (readOnly) return;
         box.querySelectorAll('input[type="radio"]').forEach((radio) => {
           radio.onchange = () => {
             if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
@@ -333,6 +387,12 @@ window.StudentUI = (function () {
   async function submitCurrentLocation() {
     const loc = locations.find((l) => l.id === currentLocId);
     if (!loc) return;
+    teamSession = await DataStore.getTeamSession(project.id, session.teamId);
+    if (isSubmissionLocked(loc.id)) {
+      alert("此地區答案已提交並鎖定。請老師解鎖後才可再編輯。");
+      openLocation(loc.id);
+      return;
+    }
     const answers = collectCurrentAnswers(loc);
     const filled = (loc.questions || []).filter((q) =>
       (answers[q.id] || "").toString().trim()
@@ -341,9 +401,17 @@ window.StudentUI = (function () {
       alert("請至少回答一題再提交。");
       return;
     }
+    const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
     if (
       !confirm(
-        "確認提交「" + loc.name + "」的答案？（已填 " + filled + " / " + (loc.questions || []).length + " 題）"
+        (isUpdate ? "確認更新「" : "確認提交「") +
+          loc.name +
+          "」的答案？（已填 " +
+          filled +
+          " / " +
+          (loc.questions || []).length +
+          " 題）" +
+          (isUpdate ? "\n更新後會再次鎖定。" : "")
       )
     ) {
       return;
@@ -358,7 +426,7 @@ window.StudentUI = (function () {
         coords: currentCoords
       });
       teamSession = await DataStore.getTeamSession(project.id, session.teamId);
-      alert("已提交！進度已更新。");
+      alert(isUpdate ? "已更新並重新鎖定。" : "已提交！進度已更新。");
       showHub();
     } catch (err) {
       alert("提交失敗：" + (err.message || err));
@@ -416,8 +484,20 @@ window.StudentUI = (function () {
       function (coords) {
         onGpsUpdate(coords);
       },
-      function () {}
+      function () {
+        /* watch errors handled by refreshGPS banner */
+      }
     );
+  }
+
+  /** Every 5 minutes force GPS read + server update (even if student forgets). */
+  function startGpsAutoInterval() {
+    if (gpsAutoTimer) return;
+    const FIVE_MIN = 5 * 60 * 1000;
+    gpsAutoTimer = setInterval(function () {
+      if (!session || !project) return;
+      refreshGPS();
+    }, FIVE_MIN);
   }
 
   async function refreshGPS() {
