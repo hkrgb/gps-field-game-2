@@ -4,9 +4,8 @@ service firebase.storage {
     match /projects/{projectId}/images/{fileName} {
       // 公開讀取圖片（學生指引／問題圖）
       allow read: if true;
-      // 僅專案擁有者可上傳（需搭配 Firestore projects.ownerUid）
+      // 共用老師工作區（MVP）：任何已登入老師可上傳
       allow write: if request.auth != null
-        && firestore.get(/databases/(default)/documents/projects/$(projectId)).data.ownerUid == request.auth.uid
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
