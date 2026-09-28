@@ -105,3 +105,16 @@ body.text-sm-mode #mainContainer {
 #demoBadge {
   letter-spacing: 0.02em;
 }
+
+
+/* Teacher monitor trail map */
+.mon-trail-map {
+  height: 220px;
+  width: 100%;
+  z-index: 1;
+}
+.mon-trail-map .leaflet-container {
+  height: 100%;
+  width: 100%;
+  font: inherit;
+}
