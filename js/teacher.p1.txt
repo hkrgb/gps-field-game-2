@@ -215,3 +215,4 @@ window.TeacherUI = (function () {
     document.getElementById("edSlug").value = p.slug || "";
     document.getElementById("edRadius").value = p.gpsRadiusMeters ?? 50;
     document.getElementById("edFont").value = p.fontSize || "base";
+
