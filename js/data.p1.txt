@@ -199,6 +199,21 @@ window.DataStore = (function () {
     return doc.exists ? { id: doc.id, ...doc.data() } : null;
   }
 
+  /** Shared teacher workspace: all projects visible to every signed-in teacher. */
+  async function listAllProjects() {
+    if (demo) {
+      const data = loadDemo();
+      return Object.entries(data.projects)
+        .map(([id, p]) => ({ id, ...p }))
+        .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    }
+    const snap = await db.collection("projects").get();
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  }
+
+  /** Kept for audit/compat; prefer listAllProjects for teacher UI. */
   async function listProjectsByOwner(ownerUid) {
     if (demo) {
       const data = loadDemo();
@@ -221,6 +236,7 @@ window.DataStore = (function () {
     const now = nowIso();
     const project = {
       ownerUid,
+      createdBy: ownerUid,
       slug: payload.slug,
       title: payload.title || "新專案",
       subtitle: payload.subtitle || "",
@@ -372,8 +388,3 @@ window.DataStore = (function () {
     // Best-effort: do not block location save if project touch fails (rules/auth race)
     try {
       await db.collection("projects").doc(projectId).update({ updatedAt: nowIso() });
-    } catch (e) {
-      console.warn("upsertLocation: updatedAt touch failed", e && e.message);
-    }
-    return { id, ...payload };
-  }
