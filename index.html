@@ -7,6 +7,7 @@
   <title>GPS 實地考察遊戲 2.0</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/app.css">
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -15,7 +16,7 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 pb-20">
 
-  <!-- Sticky header (hidden on landing) -->
+  
   <header id="appHeader" class="hidden bg-emerald-700 text-white shadow-md sticky top-0 z-50">
     <div id="headerInner" class="max-w-md mx-auto px-3 py-2.5 flex items-center justify-between gap-2 teacher-header-wrap">
       <div class="flex items-center gap-2 min-w-0">
@@ -46,7 +47,7 @@
 
   <main id="mainContainer" class="px-4 pt-4">
 
-    <!-- ===== LANDING ===== -->
+    
     <section id="view-landing" class="hidden animate-fade-in">
       <div class="text-center mb-6 pt-4">
         <div class="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-3 text-3xl shadow-sm">
@@ -103,7 +104,7 @@
       </div>
     </section>
 
-    <!-- ===== HUB ===== -->
+    
     <section id="view-hub" class="hidden space-y-3 animate-fade-in">
       <div>
         <h2 id="hubTitle" class="text-lg font-bold text-slate-800">考察任務</h2>
@@ -122,7 +123,7 @@
       <div id="hubCards" class="space-y-3"></div>
     </section>
 
-    <!-- ===== LOCATION PAGE ===== -->
+    
     <section id="view-location" class="hidden animate-fade-in space-y-4">
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3">
         <div class="flex justify-between items-start gap-2">
@@ -140,6 +141,9 @@
 
       <div id="locQuestionsSection" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
         <h3 class="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i class="fa-solid fa-pen-to-square text-emerald-600"></i> 考察問題</h3>
+        <div id="locLockedNote" class="hidden bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700">
+          <i class="fa-solid fa-lock text-slate-500 mr-1"></i> 已提交並鎖定（唯讀）。如需修改，請老師在監察頁解鎖此地區。
+        </div>
         <div id="locQuestions" class="space-y-3"></div>
         <button id="btnSubmitLoc" type="button" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
           <i class="fa-solid fa-paper-plane"></i> 提交此地區答案
@@ -147,7 +151,7 @@
       </div>
     </section>
 
-    <!-- ===== TEACHER ===== -->
+    
     <section id="view-teacher" class="hidden animate-fade-in space-y-4">
 
       <div id="teacherProjects" class="space-y-3">
@@ -201,6 +205,8 @@
               <input id="edTestMode" type="checkbox" class="w-4 h-4 accent-emerald-600">
             </label>
             <button id="btnSaveSettings" type="button" class="w-full py-2.5 bg-emerald-600 text-white font-semibold rounded-xl">儲存設定</button>
+            <button id="btnClearProjectDataEditor" type="button" class="w-full py-2.5 bg-rose-50 text-rose-700 border border-rose-200 font-semibold rounded-xl">清除資料（提交／進度／GPS）</button>
+            <p class="text-[10px] text-slate-500">清除後保留地區、問題與隊伍帳號；刪除所有提交答案、完成進度與 GPS 軌跡。</p>
           </div>
 
           <div id="edPanel_locations" class="hidden space-y-3">
@@ -225,13 +231,14 @@
       <div id="teacherMonitor" class="hidden space-y-3">
         <div class="flex justify-between items-center gap-2 flex-wrap">
           <button id="btnBackProjects2" type="button" class="text-xs text-emerald-700 hover:underline"><i class="fa-solid fa-arrow-left"></i> 專案列表</button>
-          <div class="flex gap-1.5">
+          <div class="flex gap-1.5 flex-wrap justify-end">
             <button id="btnRefreshMonitor" type="button" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-rotate"></i> 重新整理</button>
             <button id="btnExportCsv" type="button" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-file-csv"></i> 匯出 CSV</button>
+            <button id="btnClearProjectData" type="button" class="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-trash-can"></i> 清除資料</button>
           </div>
         </div>
         <h2 id="monTitle" class="font-bold text-slate-800">監察</h2>
-        <p class="text-[11px] text-slate-500">各隊伍完成進度與大約位置（相對最近檢查點）。點擊卡片可查看答題內容。</p>
+        <p class="text-[11px] text-slate-500">各隊伍完成進度與大約位置（相對最近檢查點）。點擊卡片可查看時間軸、地圖路徑、答題內容，並可解鎖再編輯。「清除資料」會刪除提交／進度／GPS 軌跡，保留地區與隊伍設定。</p>
         <div id="monSessions" class="space-y-2"></div>
         <div id="monTeamDetail" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3"></div>
         <div id="monSubmissions" class="hidden"></div>
@@ -239,7 +246,7 @@
     </section>
   </main>
 
-  <!-- Location edit modal -->
+  
   <div id="locModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
       <div class="flex justify-between items-center border-b pb-2">
@@ -286,7 +293,7 @@
     </div>
   </div>
 
-  <!-- Global loading -->
+  
   <div id="globalLoading" class="hidden fixed inset-0 bg-slate-900/50 z-[60] flex items-center justify-center">
     <div class="bg-white rounded-2xl px-6 py-5 shadow-xl text-center">
       <i class="fa-solid fa-spinner fa-spin text-2xl text-emerald-600"></i>
@@ -294,14 +301,15 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/firebase-config.js"></script>
-  <script src="js/gps.js?v=20260928d"></script>
-  <script src="js/data.js?v=20260928d"></script>
+  <script src="js/gps.js?v=20260928e"></script>
+  <script src="js/data.js?v=20260928e"></script>
   <script src="js/auth.js"></script>
-  <script src="js/student.js?v=20260928d"></script>
-  <script src="js/teacher.js?v=20260928d"></script>
+  <script src="js/student.js?v=20260928e"></script>
+  <script src="js/teacher.js?v=20260928e"></script>
   <script src="js/seed-kc-project.js"></script>
-  <script src="js/app.js?v=20260928d"></script>
+  <script src="js/app.js?v=20260928e"></script>
   <style>
     /* Make header stretch with teacher-wide main */
     #mainContainer.teacher-wide ~ * {}
