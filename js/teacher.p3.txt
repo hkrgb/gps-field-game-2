@@ -1,0 +1,218 @@
+    }
+  }
+
+  async function removeLoc(id) {
+    if (!confirm("刪除此地區？")) return;
+    await DataStore.deleteLocation(currentProject.id, id);
+    locations = await DataStore.listLocations(currentProject.id);
+    renderLocList();
+  }
+
+  function renderTeamList() {
+    const list = document.getElementById("edTeamList");
+    list.innerHTML = "";
+    teams.forEach((t) => {
+      const div = document.createElement("div");
+      div.className =
+        "bg-white border rounded-xl p-3 flex justify-between items-center gap-2";
+      div.innerHTML =
+        "<div><div class=\"font-semibold text-sm\">" +
+        esc(t.name) +
+        '</div><div class="text-[11px] text-slate-500">密碼：' +
+        esc(t.password) +
+        "</div></div>" +
+        '<button class="text-xs text-rose-600">刪除</button>';
+      div.querySelector("button").onclick = async () => {
+        if (!confirm("刪除隊伍 " + t.name + "？")) return;
+        await DataStore.deleteTeam(currentProject.id, t.id);
+        teams = await DataStore.listTeams(currentProject.id);
+        renderTeamList();
+      };
+      list.appendChild(div);
+    });
+  }
+
+  async function addTeam() {
+    const name = prompt("隊伍名稱", "第" + (teams.length + 1) + "組");
+    if (!name) return;
+    const password = prompt("密碼", "1234");
+    if (password == null) return;
+    await DataStore.upsertTeam(currentProject.id, null, { name, password });
+    teams = await DataStore.listTeams(currentProject.id);
+    renderTeamList();
+  }
+
+  async function openMonitor(projectId) {
+    StudentUI.showLoading(true);
+    try {
+      // Submissions require Firestore isOwner → request.auth must be present
+      const authed = await Auth.ensureTeacherAuth();
+      if (!authed) {
+        alert("登入狀態已過期或未還原，請重新以 Google 登入後再監察。");
+        Auth.clearSession();
+        if (typeof window.showLandingFromTeacher === "function") {
+          window.showLandingFromTeacher();
+        } else {
+          document.getElementById("appHeader").classList.add("hidden");
+          StudentUI.showView("view-landing");
+          window.location.hash = "#/";
+        }
+        return;
+      }
+      session = authed;
+      currentProject = await DataStore.getProject(projectId);
+      locations = await DataStore.listLocations(projectId);
+      teams = await DataStore.listTeams(projectId);
+      const sessions = await DataStore.listTeamSessions(projectId);
+      const submissions = await DataStore.listSubmissions(projectId);
+      showTeacherSection("monitor");
+      document.getElementById("monTitle").textContent =
+        "監察：" + (currentProject.title || "");
+      const sessBox = document.getElementById("monSessions");
+      sessBox.innerHTML = "";
+      if (!sessions.length && !teams.length) {
+        sessBox.innerHTML =
+          '<p class="text-sm text-slate-500">尚無隊伍登入紀錄。</p>';
+      }
+      const sessMap = {};
+      sessions.forEach((s) => {
+        sessMap[s.teamId] = s;
+      });
+      teams.forEach((t) => {
+        const s = sessMap[t.id] || {};
+        const done = (s.completedLocationIds || []).length;
+        const div = document.createElement("div");
+        div.className = "bg-white border rounded-xl p-3 text-sm";
+        div.innerHTML =
+          '<div class="font-bold">' +
+          esc(t.name) +
+          '</div><div class="text-xs text-slate-500 mt-1">上次登入：' +
+          (s.lastLoginAt
+            ? new Date(s.lastLoginAt).toLocaleString("zh-HK")
+            : "尚未登入") +
+          " · 完成地區 " +
+          done +
+          " / " +
+          locations.length +
+          "</div>";
+        sessBox.appendChild(div);
+      });
+      // also show sessions for unknown team ids
+      sessions.forEach((s) => {
+        if (teams.some((t) => t.id === s.teamId)) return;
+        const div = document.createElement("div");
+        div.className = "bg-white border rounded-xl p-3 text-sm";
+        div.innerHTML =
+          '<div class="font-bold">' +
+          esc(s.teamId) +
+          '</div><div class="text-xs text-slate-500">上次登入：' +
+          (s.lastLoginAt
+            ? new Date(s.lastLoginAt).toLocaleString("zh-HK")
+            : "—") +
+          "</div>";
+        sessBox.appendChild(div);
+      });
+
+      const subBox = document.getElementById("monSubmissions");
+      subBox.innerHTML = "";
+      if (!submissions.length) {
+        subBox.innerHTML =
+          '<p class="text-sm text-slate-500">尚無提交。</p>';
+      }
+      submissions.forEach((s) => {
+        const loc = locations.find((l) => l.id === s.locationId);
+        const ansKeys = Object.keys(s.answers || {}).filter(
+          (k) => (s.answers[k] || "").toString().trim()
+        );
+        const div = document.createElement("div");
+        div.className = "bg-white border rounded-xl p-3 text-xs space-y-1";
+        let detail = "";
+        ansKeys.forEach((k) => {
+          detail +=
+            "<div class=\"pl-2 border-l-2 border-emerald-200 my-0.5\">" +
+            esc(k) +
+            ": " +
+            esc(s.answers[k]) +
+            "</div>";
+        });
+        div.innerHTML =
+          '<div class="font-semibold text-sm text-slate-800">' +
+          esc(s.teamName) +
+          " · " +
+          esc(loc ? loc.name : s.locationId) +
+          "</div>" +
+          '<div class="text-slate-500">' +
+          (s.submittedAt
+            ? new Date(s.submittedAt).toLocaleString("zh-HK")
+            : "") +
+          (s.coords
+            ? " · 位置 " +
+              Number(s.coords.lat).toFixed(5) +
+              ", " +
+              Number(s.coords.lng).toFixed(5)
+            : "") +
+          "</div>" +
+          detail;
+        subBox.appendChild(div);
+      });
+
+      window._monExport = { project: currentProject, locations, submissions };
+      window.location.hash = "#/teacher/monitor/" + projectId;
+    } catch (e) {
+      if (Auth.isPermissionError && Auth.isPermissionError(e)) {
+        alert(
+          "無法讀取監察資料（權限不足）。通常是 Google 登入尚未還原。請登出後重新以 Google 登入，再按監察。"
+        );
+      } else {
+        alert(e.message || String(e));
+      }
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  function exportCSV() {
+    const data = window._monExport;
+    if (!data || !data.submissions.length) {
+      alert("沒有可匯出的資料");
+      return;
+    }
+    const csv = DataStore.exportSubmissionsCSV(
+      data.project,
+      data.locations,
+      data.submissions
+    );
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download =
+      (data.project.slug || "export") +
+      "_" +
+      new Date().toISOString().slice(0, 10) +
+      ".csv";
+    a.click();
+  }
+
+  function backToProjects() {
+    showTeacherSection("projects");
+    refreshProjects();
+    window.location.hash = "#/teacher";
+  }
+
+  return {
+    start,
+    createNewProject,
+    openEditor,
+    openMonitor,
+    saveSettings,
+    switchEditorTab,
+    openLocModal,
+    closeLocModal,
+    saveLocModal,
+    addQuestionRow,
+    addTeam,
+    exportCSV,
+    backToProjects,
+    refreshProjects
+  };
+})();
