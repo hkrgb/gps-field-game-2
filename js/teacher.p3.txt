@@ -1,195 +1,82 @@
-
-  let monitorProjectId = null;
-  let monitorCache = null;
-
-  function nearestCheckpointInfo(lat, lng, locs) {
-    if (lat == null || lng == null || !locs || !locs.length) return null;
-    let best = null;
-    locs.forEach(function (loc) {
-      if (loc.lat == null || loc.lng == null) return;
-      const dist = GPS.calculateDistance(lat, lng, loc.lat, loc.lng);
-      if (!best || dist < best.dist) {
-        best = { loc: loc, dist: dist };
-      }
-    });
-    if (!best) return null;
-    const bearing = GPS.bearingDegrees(best.loc.lat, best.loc.lng, lat, lng);
-    const dir = GPS.compassLabel(bearing);
-    return {
-      name: best.loc.name,
-      dist: best.dist,
-      bearing: bearing,
-      dir: dir,
-      phrase:
-        "約在「" +
-        best.loc.name +
-        "」的" +
-        dir +
-        "方向 " +
-        GPS.formatDistance(best.dist)
-    };
-  }
-
-  function buildTeamProgressHtml(t, s, locs) {
-    const doneIds = new Set(s.completedLocationIds || []);
-    const done = doneIds.size;
-    const total = locs.length;
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    let checks = "";
-    locs.forEach(function (loc) {
-      const ok = doneIds.has(loc.id);
-      checks +=
-        '<span class="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded ' +
-        (ok ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500") +
-        '" title="' +
-        esc(loc.name) +
-        '">' +
-        (ok ? "✓" : "○") +
-        " " +
-        esc(loc.name) +
-        "</span>";
-    });
-    let gpsLine = '<span class="text-slate-400">尚未回報位置</span>';
-    if (s.lastLat != null && s.lastLng != null) {
-      const info = nearestCheckpointInfo(s.lastLat, s.lastLng, locs);
-      if (info) {
-        gpsLine =
-          '<span class="text-emerald-800"><i class="fa-solid fa-location-crosshairs mr-1"></i>' +
-          esc(info.phrase) +
-          "</span>";
-      } else {
-        gpsLine =
-          '<span class="text-slate-600">位置 ' +
-          Number(s.lastLat).toFixed(5) +
-          ", " +
-          Number(s.lastLng).toFixed(5) +
-          "</span>";
-      }
-      if (s.lastGpsAt) {
-        gpsLine +=
-          '<span class="text-slate-400 ml-1">· ' +
-          new Date(s.lastGpsAt).toLocaleString("zh-HK") +
-          "</span>";
-      }
+  function destroyTrailMap() {
+    if (trailMapInstance) {
+      try {
+        trailMapInstance.remove();
+      } catch (e) {}
+      trailMapInstance = null;
     }
-    return (
-      '<div class="font-bold text-slate-800 flex justify-between items-center gap-2">' +
-      "<span>" +
-      esc(t.name) +
-      '</span><span class="text-xs font-semibold text-emerald-700">完成 ' +
-      done +
-      "/" +
-      total +
-      "</span></div>" +
-      '<div class="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">' +
-      '<div class="h-full bg-emerald-500 rounded-full" style="width:' +
-      pct +
-      '%"></div></div>' +
-      '<div class="mt-2 flex flex-wrap gap-1">' +
-      (checks || '<span class="text-[10px] text-slate-400">未設定地區</span>') +
-      "</div>" +
-      '<div class="mt-2 text-[11px] leading-snug">' +
-      gpsLine +
-      "</div>" +
-      '<div class="text-[10px] text-slate-400 mt-1">上次登入：' +
-      (s.lastLoginAt
-        ? new Date(s.lastLoginAt).toLocaleString("zh-HK")
-        : "尚未登入") +
-      " · 點擊查看答題</div>"
-    );
   }
 
-  function renderTeamDetail(teamId) {
-    const panel = document.getElementById("monTeamDetail");
-    if (!panel || !monitorCache) return;
-    const t =
-      monitorCache.teams.find(function (x) {
-        return x.id === teamId;
-      }) || { id: teamId, name: teamId };
-    const locs = monitorCache.locations;
-    const subs = (monitorCache.submissions || []).filter(function (s) {
-      return s.teamId === teamId;
-    });
-    let html =
-      '<div class="flex justify-between items-center gap-2 mb-2">' +
-      '<h4 class="font-bold text-sm text-slate-800">答題詳情：' +
-      esc(t.name) +
-      "</h4>" +
-      '<button type="button" id="btnCloseMonDetail" class="text-xs text-slate-500 hover:underline">關閉</button></div>';
-    if (!subs.length) {
-      html += '<p class="text-sm text-slate-500">此隊伍尚未提交答案。</p>';
-    } else {
-      subs.forEach(function (s) {
-        const loc = locs.find(function (l) {
-          return l.id === s.locationId;
-        });
-        const qMap = {};
-        ((loc && loc.questions) || []).forEach(function (q) {
-          qMap[q.id] = q;
-        });
-        let detail = "";
-        const ans = s.answers || {};
-        const keys = Object.keys(ans);
-        if (loc && loc.questions && loc.questions.length) {
-          loc.questions
-            .slice()
-            .sort(function (a, b) {
-              return (a.order || 0) - (b.order || 0);
-            })
-            .forEach(function (q) {
-              const val = ans[q.id];
-              if (val == null || String(val).trim() === "") return;
-              detail +=
-                '<div class="pl-2 border-l-2 border-emerald-200 my-1">' +
-                '<div class="text-slate-600">' +
-                esc(q.text) +
-                '</div><div class="font-medium text-slate-800">' +
-                esc(val) +
-                "</div></div>";
-            });
-        } else {
-          keys.forEach(function (k) {
-            if (!(ans[k] || "").toString().trim()) return;
-            const label = qMap[k] ? qMap[k].text : k;
-            detail +=
-              '<div class="pl-2 border-l-2 border-emerald-200 my-1">' +
-              '<div class="text-slate-600">' +
-              esc(label) +
-              '</div><div class="font-medium text-slate-800">' +
-              esc(ans[k]) +
-              "</div></div>";
-          });
-        }
-        html +=
-          '<div class="bg-white border rounded-xl p-3 text-xs space-y-1 mb-2">' +
-          '<div class="font-semibold text-sm text-slate-800">' +
-          esc(loc ? loc.name : s.locationId) +
-          "</div>" +
-          '<div class="text-slate-500">' +
-          (s.submittedAt
-            ? new Date(s.submittedAt).toLocaleString("zh-HK")
-            : "") +
-          (s.coords
-            ? " · 位置 " +
-              Number(s.coords.lat).toFixed(5) +
-              ", " +
-              Number(s.coords.lng).toFixed(5)
-            : "") +
-          "</div>" +
-          (detail || '<div class="text-slate-400">（無答案內容）</div>') +
-          "</div>";
+  function renderTrailMap(trail, locs, sess) {
+    destroyTrailMap();
+    const el = document.getElementById("monTrailMap");
+    if (!el || typeof L === "undefined") {
+      if (el) {
+        el.innerHTML =
+          '<p class="text-xs text-slate-500 p-3 text-center">地圖元件未載入</p>';
+      }
+      return;
+    }
+    const pts = (trail || [])
+      .filter(function (p) {
+        return p && p.lat != null && p.lng != null;
+      })
+      .map(function (p) {
+        return [Number(p.lat), Number(p.lng)];
       });
+    if (!pts.length && sess && sess.lastLat != null) {
+      pts.push([Number(sess.lastLat), Number(sess.lastLng)]);
     }
-    panel.innerHTML = html;
-    panel.classList.remove("hidden");
-    const closeBtn = document.getElementById("btnCloseMonDetail");
-    if (closeBtn) {
-      closeBtn.onclick = function () {
-        panel.classList.add("hidden");
-        panel.innerHTML = "";
-      };
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    trailMapInstance = map;
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "(c) OpenStreetMap"
+    }).addTo(map);
+    const fitPts = pts.slice();
+    if (pts.length) {
+      L.polyline(pts, {
+        color: "#059669",
+        weight: 4,
+        opacity: 0.85
+      }).addTo(map);
+      L.circleMarker(pts[pts.length - 1], {
+        radius: 7,
+        color: "#047857",
+        fillColor: "#34d399",
+        fillOpacity: 1
+      })
+        .bindPopup("目前／最新位置")
+        .addTo(map);
+      if (pts.length > 1) {
+        L.circleMarker(pts[0], {
+          radius: 5,
+          color: "#64748b",
+          fillColor: "#cbd5e1",
+          fillOpacity: 1
+        })
+          .bindPopup("起點")
+          .addTo(map);
+      }
     }
-    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    (locs || []).forEach(function (loc, i) {
+      if (loc.lat == null || loc.lng == null) return;
+      const ll = [Number(loc.lat), Number(loc.lng)];
+      fitPts.push(ll);
+      L.marker(ll)
+        .bindPopup(
+          "<strong>" + esc(loc.name) + "</strong><br>檢查點 " + (i + 1)
+        )
+        .addTo(map);
+    });
+    if (fitPts.length) {
+      map.fitBounds(fitPts, { padding: [28, 28], maxZoom: 17 });
+    } else {
+      map.setView([22.21, 114.03], 13);
+    }
+    setTimeout(function () {
+      map.invalidateSize();
+    }, 100);
   }
 
   async function openMonitor(projectId) {
@@ -230,6 +117,7 @@
       showTeacherSection("monitor");
       document.getElementById("monTitle").textContent =
         "監察：" + (currentProject.title || "");
+      destroyTrailMap();
       const detail = document.getElementById("monTeamDetail");
       if (detail) {
         detail.classList.add("hidden");
@@ -304,6 +192,53 @@
     await openMonitor(monitorProjectId);
   }
 
+  /**
+   * Clear runtime data: submissions + teamSessions progress/GPS trail.
+   * Keeps locations, questions, teams, project settings.
+   */
+  async function clearProjectData() {
+    const pid = monitorProjectId || (currentProject && currentProject.id);
+    if (!pid) {
+      alert("請先開啟監察或編輯頁的專案。");
+      return;
+    }
+    const okAuth = await requireTeacherAuth("清除資料");
+    if (!okAuth) return;
+    const title =
+      (currentProject && currentProject.title) ||
+      (monitorCache && monitorCache.project && monitorCache.project.title) ||
+      pid;
+    const yes = confirm(
+      "確定清除「" +
+        title +
+        "」的運行資料？\n\n將刪除：所有提交答案、隊伍進度、GPS 軌跡與解鎖狀態。\n保留：地區／問題／隊伍帳號／專案設定。\n\n此操作不可復原。"
+    );
+    if (!yes) return;
+    const yes2 = confirm("再確認一次：真的要清除此專案的提交與 GPS 資料？");
+    if (!yes2) return;
+    StudentUI.showLoading(true);
+    try {
+      const result = await withTimeout(
+        DataStore.clearProjectRuntimeData(pid),
+        30000,
+        "清除資料"
+      );
+      alert(
+        "已清除。提交：" +
+          (result.submissionsCleared != null
+            ? result.submissionsCleared
+            : "完成") +
+          "；隊伍進度重設：" +
+          (result.sessionsReset != null ? result.sessionsReset : "完成")
+      );
+      if (monitorProjectId === pid) await openMonitor(pid);
+    } catch (e) {
+      alert(writeErrorMessage(e, "清除失敗"));
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
   function exportCSV() {
     const data = window._monExport;
     if (!data || !data.submissions.length) {
@@ -346,6 +281,7 @@
     addQuestionRow,
     addTeam,
     exportCSV,
+    clearProjectData,
     backToProjects,
     refreshProjects
   };
