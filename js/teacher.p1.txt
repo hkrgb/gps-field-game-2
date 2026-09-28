@@ -1,2 +1,214 @@
 /**
- * 
+ * 老師後台：專案 CRUD、地區／問題／隊伍、監察、CSV
+ */
+window.TeacherUI = (function () {
+  let session = null;
+  let projects = [];
+  let currentProject = null;
+  let locations = [];
+  let teams = [];
+  let editingLocId = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&" + "amp;")
+      .replace(/</g, "&" + "lt;")
+      .replace(/>/g, "&" + "gt;")
+      .replace(/"/g, "&" + "quot;");
+  }
+
+  async function start(sess) {
+    session = sess;
+    if (session && !session.demo && !DataStore.isDemo()) {
+      const ok = await Auth.ensureTeacherAuth();
+      if (!ok) {
+        throw new Error("登入狀態已過期，請重新以 Google 登入老師後台。");
+      }
+      session = ok;
+    }
+    StudentUI.showView("view-teacher");
+    document.getElementById("headerUserName").textContent =
+      session.displayName || session.email || "老師";
+    document.getElementById("progressSquares").innerHTML = "";
+    document.getElementById("testModeBtn").classList.add("hidden");
+    const maxW = document.getElementById("mainContainer");
+    if (maxW) maxW.classList.add("teacher-wide");
+    showTeacherSection("projects");
+    await refreshProjects();
+    window.location.hash = "#/teacher";
+  }
+
+  function showTeacherSection(name) {
+    const map = {
+      projects: "teacherProjects",
+      editor: "teacherEditor",
+      monitor: "teacherMonitor"
+    };
+    Object.keys(map).forEach((k) => {
+      const el = document.getElementById(map[k]);
+      if (el) el.classList.toggle("hidden", k !== name);
+    });
+  }
+
+  async function refreshProjects() {
+    StudentUI.showLoading(true);
+    try {
+      projects = await DataStore.listProjectsByOwner(session.uid);
+      const list = document.getElementById("projectList");
+      list.innerHTML = "";
+      if (!projects.length) {
+        list.innerHTML =
+          '<p class="text-sm text-slate-500 py-6 text-center">尚未有專案。按「新增專案」開始。</p>';
+        return;
+      }
+      projects.forEach((p) => {
+        const card = document.createElement("div");
+        card.className =
+          "bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3";
+        const urlHint =
+          "?p=" + encodeURIComponent(p.slug) + (DataStore.isDemo() ? "&demo=1" : "");
+        card.innerHTML =
+          '<div class="min-w-0">' +
+          '<div class="font-bold text-slate-800">' +
+          esc(p.title) +
+          "</div>" +
+          '<div class="text-xs text-slate-500 mt-0.5">代碼：<code class="bg-slate-100 px-1 rounded">' +
+          esc(p.slug) +
+          "</code> · GPS " +
+          (p.gpsRadiusMeters || 50) +
+          "m</div>" +
+          '<div class="text-[11px] text-slate-400 mt-1 truncate">公開連結參數：' +
+          esc(urlHint) +
+          "</div></div>" +
+          '<div class="flex flex-wrap gap-1.5 shrink-0">' +
+          '<button data-act="edit" class="px-2.5 py-1.5 text-xs bg-emerald-600 text-white rounded-lg">編輯</button>' +
+          '<button data-act="monitor" class="px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg">監察</button>' +
+          '<button data-act="copy" class="px-2.5 py-1.5 text-xs bg-slate-100 rounded-lg">複製</button>' +
+          '<button data-act="del" class="px-2.5 py-1.5 text-xs bg-rose-50 text-rose-600 rounded-lg">刪除</button>' +
+          "</div>";
+        card.querySelector('[data-act="edit"]').onclick = () => openEditor(p.id);
+        card.querySelector('[data-act="monitor"]').onclick = () => openMonitor(p.id);
+        card.querySelector('[data-act="copy"]').onclick = () => copyProj(p.id);
+        card.querySelector('[data-act="del"]').onclick = () => deleteProj(p.id);
+        list.appendChild(card);
+      });
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  async function createNewProject() {
+    const title = prompt("專案標題", "我的實地考察");
+    if (!title) return;
+    let slug = prompt(
+      "公開代碼（英數、連字號）",
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9\\u4e00-\\u9fff]+/gi, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 40) || "project-" + Date.now().toString(36)
+    );
+    if (!slug) return;
+    slug = slug.trim().toLowerCase().replace(/\\s+/g, "-");
+    const existing = await DataStore.getProjectBySlug(slug);
+    if (existing) {
+      alert("此代碼已被使用，請換一個。");
+      return;
+    }
+    StudentUI.showLoading(true);
+    try {
+      const p = await DataStore.createProject(session.uid, {
+        title,
+        slug,
+        subtitle: "",
+        gpsRadiusMeters: 50,
+        fontSize: "base",
+        showTestMode: true,
+        teacherEmail: session.email
+      });
+      // seed one location
+      await DataStore.upsertLocation(p.id, null, {
+        name: "示範地區",
+        lat: 22.28,
+        lng: 114.16,
+        description: "請修改為實際地點與 GPS。",
+        order: 1,
+        images: [],
+        questions: [
+          {
+            id: DataStore.uid(),
+            type: "text",
+            text: "請觀察此處並寫下一句所見。",
+            order: 1
+          }
+        ]
+      });
+      await DataStore.upsertTeam(p.id, null, { name: "第1組", password: "1234" });
+      await refreshProjects();
+      await openEditor(p.id);
+    } catch (e) {
+      alert("建立失敗：" + e.message);
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  async function copyProj(id) {
+    if (!confirm("複製此專案（含地區與隊伍）？")) return;
+    StudentUI.showLoading(true);
+    try {
+      await DataStore.copyProject(id, session.uid);
+      await refreshProjects();
+      alert("已複製。");
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  async function deleteProj(id) {
+    if (!confirm("確定刪除此專案及其所有資料？此操作無法復原。")) return;
+    StudentUI.showLoading(true);
+    try {
+      await DataStore.deleteProject(id);
+      await refreshProjects();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  async function openEditor(projectId) {
+    StudentUI.showLoading(true);
+    try {
+      currentProject = await DataStore.getProject(projectId);
+      if (!currentProject) throw new Error("專案不存在");
+      locations = await DataStore.listLocations(projectId);
+      teams = await DataStore.listTeams(projectId);
+      showTeacherSection("editor");
+      fillSettingsForm();
+      renderLocList();
+      renderTeamList();
+      switchEditorTab("settings");
+      window.location.hash = "#/teacher/edit/" + projectId;
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  function fillSettingsForm() {
+    const p = currentProject;
+    document.getElementById("edTitle").value = p.title || "";
+    document.getElementById("edSubtitle").value = p.subtitle || "";
+    document.getElementById("edSlug").value = p.slug || "";
+    document.getElementById("edRadius").value = p.gpsRadiusMeters ?? 50;
+    document.getElementById("edFont").value = p.fontSize || "base";
+    document.getElementById("edTestMode").checked = p.showTestMode !== false;
+  }
+
+  async function saveSettings() {
+    const slug = document.getElementById("edSlug").value.trim().toLowerCase();
