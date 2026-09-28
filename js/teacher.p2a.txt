@@ -1,0 +1,305 @@
+  async function moveLocation(locId, delta, btn) {
+    const sorted = sortedLocations();
+    const idx = sorted.findIndex((l) => l.id === locId);
+    const j = idx + delta;
+    if (idx < 0 || j < 0 || j >= sorted.length) return;
+    const ids = sorted.map((l) => l.id);
+    const tmp = ids[idx];
+    ids[idx] = ids[j];
+    ids[j] = tmp;
+    const authed = await requireTeacherAuth("調整地區順序");
+    if (!authed) return;
+    const prevText = btn ? btn.textContent : "";
+    if (btn) {
+      btn.textContent = "…";
+      btn.disabled = true;
+    }
+    try {
+      locations = await withTimeout(
+        DataStore.reorderLocations(currentProject.id, ids),
+        15000,
+        "調整地區順序"
+      );
+      renderLocList();
+    } catch (e) {
+      alert(writeErrorMessage(e));
+      if (btn) {
+        btn.textContent = prevText;
+        btn.disabled = false;
+      }
+    }
+  }
+
+  function openLocModal(locId) {
+    editingLocId = locId || null;
+    const loc = locId ? locations.find((l) => l.id === locId) : null;
+    document.getElementById("locModalTitle").textContent = loc
+      ? "編輯地區"
+      : "新增地區";
+    document.getElementById("lmName").value = loc ? loc.name : "";
+    document.getElementById("lmDesc").value = loc ? loc.description || "" : "";
+    document.getElementById("lmLat").value = loc ? loc.lat : "";
+    document.getElementById("lmLng").value = loc ? loc.lng : "";
+    document.getElementById("lmOrder").value = loc ? loc.order : locations.length + 1;
+    document.getElementById("lmImages").value = loc
+      ? (loc.images || []).join("\n")
+      : "";
+    const qList = document.getElementById("lmQuestions");
+    qList.innerHTML = "";
+    (loc && loc.questions ? loc.questions.slice().sort((a, b) => (a.order || 0) - (b.order || 0)) : []).forEach((q) =>
+      addQuestionRow(q)
+    );
+    if (!loc) addQuestionRow();
+    document.getElementById("locModal").classList.remove("hidden");
+  }
+
+  function refreshQuestionRowButtons() {
+    const rows = document.querySelectorAll("#lmQuestions > div");
+    rows.forEach((row, i) => {
+      const up = row.querySelector(".q-up");
+      const dn = row.querySelector(".q-dn");
+      if (up) {
+        up.disabled = i === 0;
+        up.classList.toggle("opacity-40", i === 0);
+      }
+      if (dn) {
+        dn.disabled = i === rows.length - 1;
+        dn.classList.toggle("opacity-40", i === rows.length - 1);
+      }
+    });
+  }
+
+  function addQuestionRow(q) {
+    q = q || { type: "text", text: "", options: [], imageUrl: "" };
+    const list = document.getElementById("lmQuestions");
+    const row = document.createElement("div");
+    row.className = "border border-slate-200 rounded-lg p-2 space-y-1.5 bg-slate-50";
+    const type = q.type === "mcq" || q.type === "mc" ? "mcq" : "text";
+    row.innerHTML =
+      '<input type="hidden" class="q-id" value="' +
+      esc(q.id || "") +
+      '">' +
+      '<div class="flex gap-2 items-center">' +
+      '<select class="q-type text-xs border rounded px-2 py-1">' +
+      '<option value="text"' +
+      (type === "text" ? " selected" : "") +
+      ">短句子</option>" +
+      '<option value="mcq"' +
+      (type === "mcq" ? " selected" : "") +
+      ">多項選擇</option>" +
+      "</select>" +
+      '<button type="button" class="text-xs bg-white border px-1.5 py-0.5 rounded q-up" title="上移">↑</button>' +
+      '<button type="button" class="text-xs bg-white border px-1.5 py-0.5 rounded q-dn" title="下移">↓</button>' +
+      '<button type="button" class="text-rose-500 text-xs ml-auto q-del">刪除</button></div>' +
+      '<textarea class="q-text w-full px-2 py-1.5 border rounded-lg text-xs" rows="2" placeholder="問題文字…">' +
+      esc(q.text || "") +
+      "</textarea>" +
+      '<div class="q-options-wrap' +
+      (type === "mcq" ? "" : " hidden") +
+      '">' +
+      '<label class="text-[10px] text-slate-500">選項（每行一個）</label>' +
+      '<textarea class="q-options w-full px-2 py-1.5 border rounded-lg text-xs" rows="3" placeholder="A. …\nB. …">' +
+      esc((q.options || []).join("\n")) +
+      "</textarea></div>" +
+      '<input class="q-img w-full px-2 py-1 border rounded text-xs" placeholder="問題圖片 URL（可選）" value="' +
+      esc(q.imageUrl || "") +
+      '">';
+    list.appendChild(row);
+    row.querySelector(".q-del").onclick = () => {
+      row.remove();
+      refreshQuestionRowButtons();
+    };
+    row.querySelector(".q-up").onclick = () => {
+      const prev = row.previousElementSibling;
+      if (prev) list.insertBefore(row, prev);
+      refreshQuestionRowButtons();
+    };
+    row.querySelector(".q-dn").onclick = () => {
+      const next = row.nextElementSibling;
+      if (next) list.insertBefore(next, row);
+      refreshQuestionRowButtons();
+    };
+    row.querySelector(".q-type").onchange = function () {
+      row
+        .querySelector(".q-options-wrap")
+        .classList.toggle("hidden", this.value !== "mcq");
+    };
+    refreshQuestionRowButtons();
+  }
+
+  function closeLocModal() {
+    document.getElementById("locModal").classList.add("hidden");
+  }
+
+  async function saveLocModal() {
+    const name = document.getElementById("lmName").value.trim();
+    if (!name) {
+      alert("請填寫地區名稱");
+      return;
+    }
+    const questions = [];
+    document.querySelectorAll("#lmQuestions > div").forEach((row, i) => {
+      const text = row.querySelector(".q-text").value.trim();
+      if (!text) return;
+      let id = row.querySelector(".q-id").value;
+      if (!id) id = DataStore.uid();
+      const type = row.querySelector(".q-type").value;
+      const q = {
+        id,
+        type,
+        text,
+        order: i + 1,
+        imageUrl: row.querySelector(".q-img").value.trim()
+      };
+      if (type === "mcq") {
+        q.options = row
+          .querySelector(".q-options")
+          .value.split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      questions.push(q);
+    });
+    const images = document
+      .getElementById("lmImages")
+      .value.split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const authed = await requireTeacherAuth("儲存地區");
+    if (!authed) return;
+    setLocSaveBusy(true);
+    try {
+      await withTimeout(
+        DataStore.upsertLocation(currentProject.id, editingLocId, {
+          name,
+          description: document.getElementById("lmDesc").value.trim(),
+          lat: parseFloat(document.getElementById("lmLat").value) || 0,
+          lng: parseFloat(document.getElementById("lmLng").value) || 0,
+          order: parseInt(document.getElementById("lmOrder").value, 10) || 1,
+          images,
+          questions
+        }),
+        15000,
+        "儲存地區"
+      );
+      locations = await DataStore.listLocations(currentProject.id);
+      closeLocModal();
+      renderLocList();
+    } catch (e) {
+      alert(writeErrorMessage(e, "儲存失敗"));
+    } finally {
+      setLocSaveBusy(false);
+      StudentUI.showLoading(false);
+    }
+  }
+
+  async function removeLoc(id) {
+    if (!confirm("刪除此地區？")) return;
+    const authed = await requireTeacherAuth("刪除地區");
+    if (!authed) return;
+    StudentUI.showLoading(true);
+    try {
+      await withTimeout(
+        DataStore.deleteLocation(currentProject.id, id),
+        15000,
+        "刪除地區"
+      );
+      locations = await DataStore.listLocations(currentProject.id);
+      renderLocList();
+    } catch (e) {
+      alert(writeErrorMessage(e));
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  function renderTeamList() {
+    const list = document.getElementById("edTeamList");
+    list.innerHTML = "";
+    teams.forEach((t) => {
+      const div = document.createElement("div");
+      div.className =
+        "bg-white border rounded-xl p-3 flex justify-between items-center gap-2";
+      div.innerHTML =
+        "<div><div class=\"font-semibold text-sm\">" +
+        esc(t.name) +
+        '</div><div class="text-[11px] text-slate-500">密碼：' +
+        esc(t.password) +
+        "</div></div>" +
+        '<button class="text-xs text-rose-600">刪除</button>';
+      div.querySelector("button").onclick = async () => {
+        if (!confirm("刪除隊伍 " + t.name + "？")) return;
+        const authed = await requireTeacherAuth("刪除隊伍");
+        if (!authed) return;
+        StudentUI.showLoading(true);
+        try {
+          await withTimeout(
+            DataStore.deleteTeam(currentProject.id, t.id),
+            15000,
+            "刪除隊伍"
+          );
+          teams = await DataStore.listTeams(currentProject.id);
+          renderTeamList();
+        } catch (e) {
+          alert(writeErrorMessage(e));
+        } finally {
+          StudentUI.showLoading(false);
+        }
+      };
+      list.appendChild(div);
+    });
+  }
+
+  async function addTeam() {
+    const name = prompt("隊伍名稱", "第" + (teams.length + 1) + "組");
+    if (!name) return;
+    const password = prompt("密碼", "1234");
+    if (password == null) return;
+    const authed = await requireTeacherAuth("新增隊伍");
+    if (!authed) return;
+    StudentUI.showLoading(true);
+    try {
+      await withTimeout(
+        DataStore.upsertTeam(currentProject.id, null, { name, password }),
+        15000,
+        "新增隊伍"
+      );
+      teams = await DataStore.listTeams(currentProject.id);
+      renderTeamList();
+    } catch (e) {
+      alert(writeErrorMessage(e));
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  let monitorProjectId = null;
+  let monitorCache = null;
+
+  function nearestCheckpointInfo(lat, lng, locs) {
+    if (lat == null || lng == null || !locs || !locs.length) return null;
+    let best = null;
+    locs.forEach(function (loc) {
+      if (loc.lat == null || loc.lng == null) return;
+      const dist = GPS.calculateDistance(lat, lng, loc.lat, loc.lng);
+      if (!best || dist < best.dist) {
+        best = { loc: loc, dist: dist };
+      }
+    });
+    if (!best) return null;
+    const bearing = GPS.bearingDegrees(best.loc.lat, best.loc.lng, lat, lng);
+    const dir = GPS.compassLabel(bearing);
+    return {
+      name: best.loc.name,
+      dist: best.dist,
+      bearing: bearing,
+      dir: dir,
+      phrase:
+        "約在「" +
+        best.loc.name +
+        "」的" +
+        dir +
+        "方向 " +
+        GPS.formatDistance(best.dist)
+    };
+  }
