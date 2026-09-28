@@ -388,3 +388,69 @@ window.DataStore = (function () {
     // Best-effort: do not block location save if project touch fails (rules/auth race)
     try {
       await db.collection("projects").doc(projectId).update({ updatedAt: nowIso() });
+    } catch (e) {
+      console.warn("upsertLocation: updatedAt touch failed", e && e.message);
+    }
+    return { id, ...payload };
+  }
+
+  async function deleteLocation(projectId, locId) {
+    if (demo) {
+      const data = loadDemo();
+      if (data.locations[projectId]) delete data.locations[projectId][locId];
+      saveDemo(data);
+      return;
+    }
+    await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("locations")
+      .doc(locId)
+      .delete();
+  }
+
+  /* ---------- Teams ---------- */
+  async function listTeams(projectId) {
+    if (demo) {
+      const data = loadDemo();
+      const map = data.teams[projectId] || {};
+      return Object.entries(map).map(([id, t]) => ({ id, ...t }));
+    }
+    const snap = await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teams")
+      .get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+
+  async function findTeam(projectId, teamName, password) {
+    const teams = await listTeams(projectId);
+    const name = (teamName || "").trim();
+    const pw = (password || "").trim();
+    return teams.find((t) => t.name === name && String(t.password) === pw) || null;
+  }
+
+  async function upsertTeam(projectId, teamId, teamData) {
+    const id = teamId || uid();
+    const payload = {
+      name: (teamData.name || "").trim(),
+      password: String(teamData.password || "")
+      // 生產環境應改為雜湊：passwordHash
+    };
+    if (demo) {
+      const data = loadDemo();
+      if (!data.teams[projectId]) data.teams[projectId] = {};
+      data.teams[projectId][id] = payload;
+      saveDemo(data);
+      return { id, ...payload };
+    }
+    await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teams")
+      .doc(id)
+      .set(payload, { merge: true });
+    return { id, ...payload };
+  }
+
