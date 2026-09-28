@@ -203,6 +203,12 @@
     document.getElementById("btnExportCsv").addEventListener("click", () => {
       TeacherUI.exportCSV();
     });
+    const btnRefreshMon = document.getElementById("btnRefreshMonitor");
+    if (btnRefreshMon) {
+      btnRefreshMon.addEventListener("click", () => {
+        TeacherUI.refreshMonitor();
+      });
+    }
 
     window.addEventListener("hashchange", routeFromHash);
   }
