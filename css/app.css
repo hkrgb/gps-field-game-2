@@ -1,0 +1,107 @@
+/* GPS Field Trip Game 2.0 — emerald education aesthetic */
+:root {
+  --app-font-scale: 1;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans TC", "PingFang HK", Arial, sans-serif;
+  font-size: calc(1rem * var(--app-font-scale));
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.28s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#mainContainer {
+  max-width: 28rem; /* max-w-md student */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#mainContainer.teacher-wide {
+  max-width: 56rem; /* wider teacher admin */
+}
+
+.progress-square {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+}
+
+.progress-square.filled {
+  background: #fbbf24;
+  color: #78350f;
+  border-color: #f59e0b;
+}
+
+.progress-square.empty {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.badge-done {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  background: #d1fae5;
+  color: #065f46;
+  white-space: nowrap;
+}
+
+.badge-open {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  background: #ecfdf5;
+  color: #047857;
+  white-space: nowrap;
+}
+
+.badge-lock {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  background: #e2e8f0;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body.text-lg-mode #mainContainer {
+  font-size: 1.05rem;
+}
+
+body.text-sm-mode #mainContainer {
+  font-size: 0.9rem;
+}
+
+#demoBadge {
+  letter-spacing: 0.02em;
+}
