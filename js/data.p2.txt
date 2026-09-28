@@ -1,1 +1,516 @@
-PLACEHOLDER
+  async function deleteTeam(projectId, teamId) {
+    if (demo) {
+      const data = loadDemo();
+      if (data.teams[projectId]) delete data.teams[projectId][teamId];
+      saveDemo(data);
+      return;
+    }
+    await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teams")
+      .doc(teamId)
+      .delete();
+  }
+
+  /* ---------- Sessions & submissions ---------- */
+  async function recordTeamLogin(projectId, teamId) {
+    const payload = { lastLoginAt: nowIso() };
+    if (demo) {
+      const data = loadDemo();
+      if (!data.teamSessions[projectId]) data.teamSessions[projectId] = {};
+      const prev = data.teamSessions[projectId][teamId] || { completedLocationIds: [] };
+      data.teamSessions[projectId][teamId] = Object.assign({}, prev, {
+        lastLoginAt: payload.lastLoginAt,
+        completedLocationIds: prev.completedLocationIds || []
+      });
+      saveDemo(data);
+      return data.teamSessions[projectId][teamId];
+    }
+    const ref = db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .doc(teamId);
+    const doc = await ref.get();
+    if (doc.exists) {
+      await ref.update({ lastLoginAt: payload.lastLoginAt });
+      return { ...doc.data(), lastLoginAt: payload.lastLoginAt };
+    }
+    const full = { lastLoginAt: payload.lastLoginAt, completedLocationIds: [] };
+    await ref.set(full);
+    return full;
+  }
+
+  async function getTeamSession(projectId, teamId) {
+    if (demo) {
+      const data = loadDemo();
+      return (
+        (data.teamSessions[projectId] && data.teamSessions[projectId][teamId]) || {
+          lastLoginAt: null,
+          completedLocationIds: []
+        }
+      );
+    }
+    const doc = await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .doc(teamId)
+      .get();
+    return doc.exists
+      ? doc.data()
+      : { lastLoginAt: null, completedLocationIds: [] };
+  }
+
+  async function listTeamSessions(projectId) {
+    if (demo) {
+      const data = loadDemo();
+      const map = data.teamSessions[projectId] || {};
+      return Object.entries(map).map(([teamId, s]) => ({ teamId, ...s }));
+    }
+    const snap = await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .get();
+    return snap.docs.map((d) => ({ teamId: d.id, ...d.data() }));
+  }
+
+  async function markLocationComplete(projectId, teamId, locationId) {
+    if (demo) {
+      const data = loadDemo();
+      if (!data.teamSessions[projectId]) data.teamSessions[projectId] = {};
+      const s = data.teamSessions[projectId][teamId] || {
+        lastLoginAt: nowIso(),
+        completedLocationIds: []
+      };
+      if (!s.completedLocationIds.includes(locationId)) {
+        s.completedLocationIds.push(locationId);
+      }
+      data.teamSessions[projectId][teamId] = s;
+      saveDemo(data);
+      return s;
+    }
+    const ref = db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .doc(teamId);
+    await ref.set(
+      {
+        completedLocationIds: firebase.firestore.FieldValue.arrayUnion(locationId),
+        lastLoginAt: nowIso()
+      },
+      { merge: true }
+    );
+    return getTeamSession(projectId, teamId);
+  }
+
+  const TRAIL_MAX = 300;
+  const TRAIL_MIN_METERS = 15;
+  const TRAIL_MIN_MS = 45000;
+
+  function haversineMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = function (d) {
+      return (d * Math.PI) / 180;
+    };
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function shouldAppendTrail(prevTrail, lat, lng, atIso) {
+    if (!prevTrail || !prevTrail.length) return true;
+    const last = prevTrail[prevTrail.length - 1];
+    if (!last || last.lat == null || last.lng == null) return true;
+    const dist = haversineMeters(last.lat, last.lng, lat, lng);
+    if (dist >= TRAIL_MIN_METERS) return true;
+    const t0 = last.at ? Date.parse(last.at) : 0;
+    const t1 = atIso ? Date.parse(atIso) : Date.now();
+    if (t1 - t0 >= TRAIL_MIN_MS) return true;
+    return false;
+  }
+
+  function appendTrailPoint(prevTrail, lat, lng, atIso) {
+    const trail = Array.isArray(prevTrail) ? prevTrail.slice() : [];
+    if (!shouldAppendTrail(trail, lat, lng, atIso)) return trail;
+    trail.push({ lat: Number(lat), lng: Number(lng), at: atIso || nowIso() });
+    if (trail.length > TRAIL_MAX) return trail.slice(trail.length - TRAIL_MAX);
+    return trail;
+  }
+
+  async function updateTeamGps(projectId, teamId, coords) {
+    if (!coords || coords.lat == null || coords.lng == null) return null;
+    const at = nowIso();
+    const lat = Number(coords.lat);
+    const lng = Number(coords.lng);
+    if (demo) {
+      const data = loadDemo();
+      if (!data.teamSessions[projectId]) data.teamSessions[projectId] = {};
+      const prev = data.teamSessions[projectId][teamId] || {
+        lastLoginAt: null,
+        completedLocationIds: []
+      };
+      const trail = appendTrailPoint(prev.trail, lat, lng, at);
+      data.teamSessions[projectId][teamId] = Object.assign({}, prev, {
+        lastLat: lat,
+        lastLng: lng,
+        lastGpsAt: at,
+        trail: trail
+      });
+      saveDemo(data);
+      return data.teamSessions[projectId][teamId];
+    }
+    const ref = db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .doc(teamId);
+    const doc = await ref.get();
+    const prev = doc.exists ? doc.data() || {} : {};
+    const trail = appendTrailPoint(prev.trail, lat, lng, at);
+    await ref.set(
+      {
+        lastLat: lat,
+        lastLng: lng,
+        lastGpsAt: at,
+        trail: trail
+      },
+      { merge: true }
+    );
+    return getTeamSession(projectId, teamId);
+  }
+
+  /**
+   * Clear runtime data for a project: submissions + team progress/GPS trail.
+   * Keeps project settings, locations/questions, and team accounts.
+   */
+  async function clearProjectRuntimeData(projectId) {
+    if (demo) {
+      const data = loadDemo();
+      data.submissions[projectId] = {};
+      const sessions = data.teamSessions[projectId] || {};
+      Object.keys(sessions).forEach(function (tid) {
+        const prev = sessions[tid] || {};
+        sessions[tid] = {
+          lastLoginAt: prev.lastLoginAt || null,
+          completedLocationIds: [],
+          trail: [],
+          unlockedEdits: {},
+          locationAnswers: {}
+        };
+      });
+      data.teamSessions[projectId] = sessions;
+      saveDemo(data);
+      return { submissionsCleared: true, sessionsReset: Object.keys(sessions).length };
+    }
+    const projRef = db.collection("projects").doc(projectId);
+    const subSnap = await projRef.collection("submissions").get();
+    const sessSnap = await projRef.collection("teamSessions").get();
+    let batch = db.batch();
+    let ops = 0;
+    const commitIfNeeded = async function () {
+      if (ops >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        ops = 0;
+      }
+    };
+    for (let i = 0; i < subSnap.docs.length; i++) {
+      batch.delete(subSnap.docs[i].ref);
+      ops++;
+      await commitIfNeeded();
+    }
+    for (let i = 0; i < sessSnap.docs.length; i++) {
+      const d = sessSnap.docs[i];
+      const prev = d.data() || {};
+      batch.set(d.ref, {
+        lastLoginAt: prev.lastLoginAt || null,
+        completedLocationIds: [],
+        trail: [],
+        unlockedEdits: {},
+        locationAnswers: {}
+      });
+      ops++;
+      await commitIfNeeded();
+    }
+    if (ops > 0) await batch.commit();
+    return {
+      submissionsCleared: subSnap.size,
+      sessionsReset: sessSnap.size
+    };
+  }
+
+  /** Teacher unlocks a team+location for re-edit. unlockedEdits[locId]=true */
+  async function setLocationEditUnlock(projectId, teamId, locationId, unlocked) {
+    if (!projectId || !teamId || !locationId) return null;
+    if (demo) {
+      const data = loadDemo();
+      if (!data.teamSessions[projectId]) data.teamSessions[projectId] = {};
+      const prev = data.teamSessions[projectId][teamId] || {
+        lastLoginAt: null,
+        completedLocationIds: []
+      };
+      const map = Object.assign({}, prev.unlockedEdits || {});
+      if (unlocked) map[locationId] = true;
+      else delete map[locationId];
+      prev.unlockedEdits = map;
+      data.teamSessions[projectId][teamId] = prev;
+      saveDemo(data);
+      return prev;
+    }
+    const ref = db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .doc(teamId);
+    const doc = await ref.get();
+    const prev = doc.exists ? doc.data() || {} : {};
+    const map = Object.assign({}, prev.unlockedEdits || {});
+    if (unlocked) map[locationId] = true;
+    else delete map[locationId];
+    await ref.set({ unlockedEdits: map }, { merge: true });
+    return getTeamSession(projectId, teamId);
+  }
+
+  /**
+   * Rewrite location order to 1..n contiguous and persist changed docs.
+   * orderedIds: array of location ids in desired order.
+   */
+  async function reorderLocations(projectId, orderedIds) {
+    const locs = await listLocations(projectId);
+    const byId = {};
+    locs.forEach((l) => {
+      byId[l.id] = l;
+    });
+    const ids = (orderedIds || []).filter((id) => byId[id]);
+    locs.forEach((l) => {
+      if (ids.indexOf(l.id) < 0) ids.push(l.id);
+    });
+    const updates = [];
+    ids.forEach((id, i) => {
+      const nextOrder = i + 1;
+      if ((byId[id].order || 0) !== nextOrder) {
+        updates.push({ id, order: nextOrder, loc: byId[id] });
+      }
+    });
+    if (!updates.length) return listLocations(projectId);
+    if (demo) {
+      const data = loadDemo();
+      if (!data.locations[projectId]) data.locations[projectId] = {};
+      updates.forEach((u) => {
+        const cur = data.locations[projectId][u.id] || {};
+        data.locations[projectId][u.id] = Object.assign({}, cur, { order: u.order });
+      });
+      if (data.projects[projectId]) data.projects[projectId].updatedAt = nowIso();
+      saveDemo(data);
+      return listLocations(projectId);
+    }
+    const batch = db.batch();
+    const col = db.collection("projects").doc(projectId).collection("locations");
+    updates.forEach((u) => {
+      batch.set(col.doc(u.id), { order: u.order }, { merge: true });
+    });
+    await batch.commit();
+    try {
+      await db.collection("projects").doc(projectId).update({ updatedAt: nowIso() });
+    } catch (e) {
+      console.warn("reorderLocations: updatedAt touch failed", e && e.message);
+    }
+    return listLocations(projectId);
+  }
+
+  async function saveLocationAnswersOnSession(projectId, teamId, locationId, answers) {
+    if (demo) {
+      const data = loadDemo();
+      if (!data.teamSessions[projectId]) data.teamSessions[projectId] = {};
+      const prev = data.teamSessions[projectId][teamId] || {
+        lastLoginAt: null,
+        completedLocationIds: []
+      };
+      const locAns = Object.assign({}, prev.locationAnswers || {});
+      locAns[locationId] = answers || {};
+      const unlocked = Object.assign({}, prev.unlockedEdits || {});
+      delete unlocked[locationId];
+      prev.locationAnswers = locAns;
+      prev.unlockedEdits = unlocked;
+      data.teamSessions[projectId][teamId] = prev;
+      saveDemo(data);
+      return prev;
+    }
+    const ref = db
+      .collection("projects")
+      .doc(projectId)
+      .collection("teamSessions")
+      .doc(teamId);
+    const doc = await ref.get();
+    const prev = doc.exists ? doc.data() || {} : {};
+    const locAns = Object.assign({}, prev.locationAnswers || {});
+    locAns[locationId] = answers || {};
+    const unlocked = Object.assign({}, prev.unlockedEdits || {});
+    delete unlocked[locationId];
+    await ref.set(
+      { locationAnswers: locAns, unlockedEdits: unlocked },
+      { merge: true }
+    );
+    return getTeamSession(projectId, teamId);
+  }
+
+  async function submitAnswers(projectId, submission) {
+    const id = uid();
+    const payload = {
+      teamId: submission.teamId,
+      teamName: submission.teamName,
+      locationId: submission.locationId,
+      answers: submission.answers || {},
+      submittedAt: nowIso(),
+      coords: submission.coords || null,
+      locked: true
+    };
+    if (demo) {
+      const data = loadDemo();
+      if (!data.submissions[projectId]) data.submissions[projectId] = {};
+      data.submissions[projectId][id] = payload;
+      saveDemo(data);
+      await markLocationComplete(projectId, submission.teamId, submission.locationId);
+      await saveLocationAnswersOnSession(
+        projectId,
+        submission.teamId,
+        submission.locationId,
+        submission.answers || {}
+      );
+      return { id, ...payload };
+    }
+    await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("submissions")
+      .doc(id)
+      .set(payload);
+    await markLocationComplete(projectId, submission.teamId, submission.locationId);
+    await saveLocationAnswersOnSession(
+      projectId,
+      submission.teamId,
+      submission.locationId,
+      submission.answers || {}
+    );
+    return { id, ...payload };
+  }
+
+  async function listSubmissions(projectId) {
+    if (demo) {
+      const data = loadDemo();
+      const map = data.submissions[projectId] || {};
+      return Object.entries(map)
+        .map(([id, s]) => ({ id, ...s }))
+        .sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+    }
+    const snap = await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("submissions")
+      .orderBy("submittedAt", "desc")
+      .get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+
+  /** 取得某隊某地點最新草稿／提交（demo 用 localStorage 草稿；Firebase 取最新 submission） */
+  async function getLatestAnswersForLocation(projectId, teamId, locationId) {
+    const all = await listSubmissions(projectId);
+    const found = all.find(
+      (s) => s.teamId === teamId && s.locationId === locationId
+    );
+    return found ? found.answers : {};
+  }
+
+  function exportSubmissionsCSV(project, locations, submissions) {
+    const headers = ["提交時間", "隊伍", "地區", "緯度", "經度"];
+    locations.forEach((l) => {
+      (l.questions || []).forEach((q) => {
+        headers.push(l.name + " - " + q.text);
+      });
+    });
+    const rows = [headers.map((h) => '"' + String(h).replace(/"/g, '""') + '"').join(",")];
+    submissions.forEach((s) => {
+      const loc = locations.find((l) => l.id === s.locationId);
+      const row = [
+        s.submittedAt ? new Date(s.submittedAt).toLocaleString("zh-HK") : "",
+        s.teamName || "",
+        loc ? loc.name : s.locationId,
+        s.coords ? s.coords.lat : "",
+        s.coords ? s.coords.lng : ""
+      ];
+      locations.forEach((l) => {
+        (l.questions || []).forEach((q) => {
+          if (l.id === s.locationId) {
+            row.push((s.answers && s.answers[q.id]) || "");
+          } else {
+            row.push("");
+          }
+        });
+      });
+      rows.push(row.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(","));
+    });
+    return "\uFEFF" + rows.join("\n");
+  }
+
+  async function uploadImage(projectId, file) {
+    if (demo) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    if (!storage) throw new Error("Storage 未啟用");
+    const path =
+      "projects/" + projectId + "/images/" + Date.now() + "_" + (file.name || "img");
+    const ref = storage.ref().child(path);
+    await ref.put(file);
+    return await ref.getDownloadURL();
+  }
+
+  return {
+    init,
+    isDemo,
+    resetDemo,
+    uid,
+    getProjectBySlug,
+    getProject,
+    listAllProjects,
+    listProjectsByOwner,
+    createProject,
+    updateProject,
+    deleteProject,
+    copyProject,
+    listLocations,
+    upsertLocation,
+    deleteLocation,
+    listTeams,
+    findTeam,
+    upsertTeam,
+    deleteTeam,
+    recordTeamLogin,
+    getTeamSession,
+    listTeamSessions,
+    markLocationComplete,
+    updateTeamGps,
+    clearProjectRuntimeData,
+    setLocationEditUnlock,
+    reorderLocations,
+    submitAnswers,
+    listSubmissions,
+    getLatestAnswersForLocation,
+    exportSubmissionsCSV,
+    uploadImage
+  };
+})();
