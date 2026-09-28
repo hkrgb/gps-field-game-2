@@ -1,0 +1,191 @@
+    if (!slug) {
+      alert("請填寫公開代碼");
+      return;
+    }
+    const other = await DataStore.getProjectBySlug(slug);
+    if (other && other.id !== currentProject.id) {
+      alert("此代碼已被其他專案使用");
+      return;
+    }
+    StudentUI.showLoading(true);
+    try {
+      currentProject = await DataStore.updateProject(currentProject.id, {
+        title: document.getElementById("edTitle").value.trim(),
+        subtitle: document.getElementById("edSubtitle").value.trim(),
+        slug,
+        gpsRadiusMeters: parseInt(document.getElementById("edRadius").value, 10) || 50,
+        fontSize: document.getElementById("edFont").value,
+        showTestMode: document.getElementById("edTestMode").checked
+      });
+      alert("設定已儲存");
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  function switchEditorTab(tab) {
+    ["settings", "locations", "teams"].forEach((t) => {
+      const panel = document.getElementById("edPanel_" + t);
+      const btn = document.getElementById("edTab_" + t);
+      if (panel) panel.classList.toggle("hidden", t !== tab);
+      if (btn) {
+        btn.className =
+          "flex-1 py-2 text-xs font-semibold rounded-lg " +
+          (t === tab
+            ? "bg-emerald-600 text-white"
+            : "bg-slate-100 text-slate-700");
+      }
+    });
+  }
+
+  function renderLocList() {
+    const list = document.getElementById("edLocList");
+    list.innerHTML = "";
+    locations
+      .slice()
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .forEach((loc) => {
+        const div = document.createElement("div");
+        div.className = "bg-white border border-slate-200 rounded-xl p-3";
+        div.innerHTML =
+          '<div class="flex justify-between items-start gap-2">' +
+          "<div><div class=\"font-bold text-sm\">" +
+          esc(loc.name) +
+          '</div><div class="text-[11px] text-slate-500">' +
+          (loc.questions || []).length +
+          " 題 · " +
+          loc.lat +
+          ", " +
+          loc.lng +
+          "</div></div>" +
+          '<div class="flex gap-1"><button class="text-xs bg-slate-100 px-2 py-1 rounded" data-e>編輯</button>' +
+          '<button class="text-xs bg-rose-50 text-rose-600 px-2 py-1 rounded" data-d>刪除</button></div></div>';
+        div.querySelector("[data-e]").onclick = () => openLocModal(loc.id);
+        div.querySelector("[data-d]").onclick = () => removeLoc(loc.id);
+        list.appendChild(div);
+      });
+  }
+
+  function openLocModal(locId) {
+    editingLocId = locId || null;
+    const loc = locId ? locations.find((l) => l.id === locId) : null;
+    document.getElementById("locModalTitle").textContent = loc
+      ? "編輯地區"
+      : "新增地區";
+    document.getElementById("lmName").value = loc ? loc.name : "";
+    document.getElementById("lmDesc").value = loc ? loc.description || "" : "";
+    document.getElementById("lmLat").value = loc ? loc.lat : "";
+    document.getElementById("lmLng").value = loc ? loc.lng : "";
+    document.getElementById("lmOrder").value = loc ? loc.order : locations.length + 1;
+    document.getElementById("lmImages").value = loc
+      ? (loc.images || []).join("\n")
+      : "";
+    const qList = document.getElementById("lmQuestions");
+    qList.innerHTML = "";
+    (loc && loc.questions ? loc.questions : []).forEach((q) =>
+      addQuestionRow(q)
+    );
+    if (!loc) addQuestionRow();
+    document.getElementById("locModal").classList.remove("hidden");
+  }
+
+  function addQuestionRow(q) {
+    q = q || { type: "text", text: "", options: [], imageUrl: "" };
+    const list = document.getElementById("lmQuestions");
+    const row = document.createElement("div");
+    row.className = "border border-slate-200 rounded-lg p-2 space-y-1.5 bg-slate-50";
+    const type = q.type === "mcq" || q.type === "mc" ? "mcq" : "text";
+    row.innerHTML =
+      '<input type="hidden" class="q-id" value="' +
+      esc(q.id || "") +
+      '">' +
+      '<div class="flex gap-2 items-center">' +
+      '<select class="q-type text-xs border rounded px-2 py-1">' +
+      '<option value="text"' +
+      (type === "text" ? " selected" : "") +
+      ">短句子</option>" +
+      '<option value="mcq"' +
+      (type === "mcq" ? " selected" : "") +
+      ">多項選擇</option>" +
+      "</select>" +
+      '<button type="button" class="text-rose-500 text-xs ml-auto q-del">刪除</button></div>' +
+      '<textarea class="q-text w-full px-2 py-1.5 border rounded-lg text-xs" rows="2" placeholder="問題文字…">' +
+      esc(q.text || "") +
+      "</textarea>" +
+      '<div class="q-options-wrap' +
+      (type === "mcq" ? "" : " hidden") +
+      '">' +
+      '<label class="text-[10px] text-slate-500">選項（每行一個）</label>' +
+      '<textarea class="q-options w-full px-2 py-1.5 border rounded-lg text-xs" rows="3" placeholder="A. …\nB. …">' +
+      esc((q.options || []).join("\n")) +
+      "</textarea></div>" +
+      '<input class="q-img w-full px-2 py-1 border rounded text-xs" placeholder="問題圖片 URL（可選）" value="' +
+      esc(q.imageUrl || "") +
+      '">';
+    list.appendChild(row);
+    row.querySelector(".q-del").onclick = () => row.remove();
+    row.querySelector(".q-type").onchange = function () {
+      row
+        .querySelector(".q-options-wrap")
+        .classList.toggle("hidden", this.value !== "mcq");
+    };
+  }
+
+  function closeLocModal() {
+    document.getElementById("locModal").classList.add("hidden");
+  }
+
+  async function saveLocModal() {
+    const name = document.getElementById("lmName").value.trim();
+    if (!name) {
+      alert("請填寫地區名稱");
+      return;
+    }
+    const questions = [];
+    document.querySelectorAll("#lmQuestions > div").forEach((row, i) => {
+      const text = row.querySelector(".q-text").value.trim();
+      if (!text) return;
+      let id = row.querySelector(".q-id").value;
+      if (!id) id = DataStore.uid();
+      const type = row.querySelector(".q-type").value;
+      const q = {
+        id,
+        type,
+        text,
+        order: i + 1,
+        imageUrl: row.querySelector(".q-img").value.trim()
+      };
+      if (type === "mcq") {
+        q.options = row
+          .querySelector(".q-options")
+          .value.split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      questions.push(q);
+    });
+    const images = document
+      .getElementById("lmImages")
+      .value.split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    StudentUI.showLoading(true);
+    try {
+      await DataStore.upsertLocation(currentProject.id, editingLocId, {
+        name,
+        description: document.getElementById("lmDesc").value.trim(),
+        lat: parseFloat(document.getElementById("lmLat").value) || 0,
+        lng: parseFloat(document.getElementById("lmLng").value) || 0,
+        order: parseInt(document.getElementById("lmOrder").value, 10) || 1,
+        images,
+        questions
+      });
+      locations = await DataStore.listLocations(currentProject.id);
+      closeLocModal();
+      renderLocList();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
