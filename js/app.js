@@ -209,6 +209,18 @@
         TeacherUI.refreshMonitor();
       });
     }
+    const btnClear = document.getElementById("btnClearProjectData");
+    if (btnClear) {
+      btnClear.addEventListener("click", () => {
+        TeacherUI.clearProjectData();
+      });
+    }
+    const btnClearEd = document.getElementById("btnClearProjectDataEditor");
+    if (btnClearEd) {
+      btnClearEd.addEventListener("click", () => {
+        TeacherUI.clearProjectData();
+      });
+    }
 
     window.addEventListener("hashchange", routeFromHash);
   }
