@@ -1,1 +1,1 @@
-FILE:/workspace/gps-game-2.0/js/teacher.js
+PLACEHOLDER_LOAD_FROM_FILE
