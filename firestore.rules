@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(projectId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.ownerUid == request.auth.uid;
+    }
+
+    // 老師個人檔
+    match /teachers/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    match /projects/{projectId} {
+      // 公開讀取專案設定（學生需知 slug／標題／GPS 範圍）
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isOwner(projectId);
+
+      match /locations/{locId} {
+        allow read: if true;
+        allow write: if isOwner(projectId);
+      }
+
+      match /teams/{teamId} {
+        // 注意：MVP 允許讀取隊伍（含明文密碼）以便客戶端驗證。
+        // 正式環境應改為 Cloud Function 驗證，並禁止客戶端讀 password。
+        allow read: if true;
+        allow write: if isOwner(projectId);
+      }
+
+      match /submissions/{subId} {
+        // 學生可新增提交；老師可讀；禁止任意改寫他人提交
+        allow read: if isOwner(projectId);
+        allow create: if true
+          && request.resource.data.keys().hasAll(['teamId', 'teamName', 'locationId', 'answers', 'submittedAt']);
+        allow update, delete: if isOwner(projectId);
+      }
+
+      match /teamSessions/{teamId} {
+        allow read: if isOwner(projectId) || true; // 學生更新自己的 session；MVP 寬鬆
+        allow create, update: if true;
+        allow delete: if isOwner(projectId);
+      }
+    }
+  }
+}
+
+/*
+  安全注意（請務必閱讀 README）：
+  - 本規則為校內 MVP：隊伍密碼明文、提交／session 寫入較寬鬆。
+  - 公開部署前應：雜湊密碼、以 Cloud Functions 驗證登入、收緊 submissions create、
+    限制 teams 讀取欄位、加入 App Check、限制老師電郵網域。
+*/
