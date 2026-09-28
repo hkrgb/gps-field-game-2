@@ -104,12 +104,12 @@ window.TeacherUI = (function () {
       "公開代碼（英數、連字號）",
       title
         .toLowerCase()
-        .replace(/[^a-z0-9\\u4e00-\\u9fff]+/gi, "-")
+        .replace(/[^a-z0-9\u4e00-\u9fff]+/gi, "-")
         .replace(/^-|-$/g, "")
         .slice(0, 40) || "project-" + Date.now().toString(36)
     );
     if (!slug) return;
-    slug = slug.trim().toLowerCase().replace(/\\s+/g, "-");
+    slug = slug.trim().toLowerCase().replace(/\s+/g, "-");
     const existing = await DataStore.getProjectBySlug(slug);
     if (existing) {
       alert("此代碼已被使用，請換一個。");
