@@ -35,7 +35,7 @@
 
     // Restore Firebase Auth before trusting a cached teacher session.
     // projects are publicly readable, so sessionStorage alone can show the
-    // project list while submissions (isOwner) fail without request.auth.
+    // project list while teacher writes/submissions fail without request.auth.
     if (!DataStore.isDemo()) {
       await Auth.waitForFirebaseAuth();
     }
