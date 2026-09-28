@@ -12,7 +12,8 @@
   var v = "?v=20260928e";
   var code =
     loadText("js/teacher.p1.txt" + v) +
-    loadText("js/teacher.p2.txt" + v) +
+    loadText("js/teacher.p2a.txt" + v) +
+    loadText("js/teacher.p2b.txt" + v) +
     loadText("js/teacher.p3.txt" + v);
   (0, eval)(code);
 })();
