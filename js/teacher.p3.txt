@@ -1,14 +1,22 @@
-      alert(e.message);
-    } finally {
-      StudentUI.showLoading(false);
-    }
-  }
 
   async function removeLoc(id) {
     if (!confirm("刪除此地區？")) return;
-    await DataStore.deleteLocation(currentProject.id, id);
-    locations = await DataStore.listLocations(currentProject.id);
-    renderLocList();
+    const authed = await requireTeacherAuth("刪除地區");
+    if (!authed) return;
+    StudentUI.showLoading(true);
+    try {
+      await withTimeout(
+        DataStore.deleteLocation(currentProject.id, id),
+        15000,
+        "刪除地區"
+      );
+      locations = await DataStore.listLocations(currentProject.id);
+      renderLocList();
+    } catch (e) {
+      alert(writeErrorMessage(e));
+    } finally {
+      StudentUI.showLoading(false);
+    }
   }
 
   function renderTeamList() {
@@ -27,9 +35,22 @@
         '<button class="text-xs text-rose-600">刪除</button>';
       div.querySelector("button").onclick = async () => {
         if (!confirm("刪除隊伍 " + t.name + "？")) return;
-        await DataStore.deleteTeam(currentProject.id, t.id);
-        teams = await DataStore.listTeams(currentProject.id);
-        renderTeamList();
+        const authed = await requireTeacherAuth("刪除隊伍");
+        if (!authed) return;
+        StudentUI.showLoading(true);
+        try {
+          await withTimeout(
+            DataStore.deleteTeam(currentProject.id, t.id),
+            15000,
+            "刪除隊伍"
+          );
+          teams = await DataStore.listTeams(currentProject.id);
+          renderTeamList();
+        } catch (e) {
+          alert(writeErrorMessage(e));
+        } finally {
+          StudentUI.showLoading(false);
+        }
       };
       list.appendChild(div);
     });
@@ -40,9 +61,22 @@
     if (!name) return;
     const password = prompt("密碼", "1234");
     if (password == null) return;
-    await DataStore.upsertTeam(currentProject.id, null, { name, password });
-    teams = await DataStore.listTeams(currentProject.id);
-    renderTeamList();
+    const authed = await requireTeacherAuth("新增隊伍");
+    if (!authed) return;
+    StudentUI.showLoading(true);
+    try {
+      await withTimeout(
+        DataStore.upsertTeam(currentProject.id, null, { name, password }),
+        15000,
+        "新增隊伍"
+      );
+      teams = await DataStore.listTeams(currentProject.id);
+      renderTeamList();
+    } catch (e) {
+      alert(writeErrorMessage(e));
+    } finally {
+      StudentUI.showLoading(false);
+    }
   }
 
   async function openMonitor(projectId) {
