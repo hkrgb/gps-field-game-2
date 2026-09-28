@@ -1,1 +1,1 @@
-dGVzdA==
+@file:///workspace/gps-game-2.0/js/student.js
