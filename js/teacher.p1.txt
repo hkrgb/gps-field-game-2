@@ -1,5 +1,5 @@
 /**
- * 老師後台：專案 CRUD、地區／問題／隊伍、監察、CSV
+ * 老師後台：共用工作區專案 CRUD、地區／問題／隊伍、監察、CSV
  */
 window.TeacherUI = (function () {
   let session = null;
@@ -110,12 +110,12 @@ window.TeacherUI = (function () {
   async function refreshProjects() {
     StudentUI.showLoading(true);
     try {
-      projects = await DataStore.listProjectsByOwner(session.uid);
+      projects = await DataStore.listAllProjects();
       const list = document.getElementById("projectList");
       list.innerHTML = "";
       if (!projects.length) {
         list.innerHTML =
-          '<p class="text-sm text-slate-500 py-6 text-center">尚未有專案。按「新增專案」開始。</p>';
+          '<p class="text-sm text-slate-500 py-6 text-center">共用工作區尚未有專案。按「新增專案」開始（所有老師可見）。</p>';
         return;
       }
       projects.forEach((p) => {
