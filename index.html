@@ -94,7 +94,7 @@
         </div>
 
         <div id="panelAdmin" class="hidden space-y-3">
-          <p class="text-xs text-slate-600">老師以 Google 帳號登入後，可建立／管理自己的考察專案。Demo 模式下會以「示範老師」身分進入本地後台。</p>
+          <p class="text-xs text-slate-600">老師以 Google 帳號登入後，進入共用老師工作區，可一起建立／編輯／監察所有考察專案。Demo 模式下會以「示範老師」身分進入本地後台。</p>
           <button type="button" id="btnTeacherLogin" class="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
             <i class="fa-brands fa-google"></i> 老師 Google 登入
           </button>
@@ -152,7 +152,7 @@
 
       <div id="teacherProjects" class="space-y-3">
         <div class="flex justify-between items-center">
-          <h2 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-folder-open text-emerald-600"></i> 我的專案</h2>
+          <h2 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-folder-open text-emerald-600"></i> 共用專案</h2>
           <button id="btnNewProject" type="button" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-semibold">+ 新增專案</button>
         </div>
         <div id="projectList" class="space-y-3"></div>
@@ -295,13 +295,13 @@
   </div>
 
   <script src="js/firebase-config.js"></script>
-  <script src="js/gps.js?v=20260928c"></script>
-  <script src="js/data.js?v=20260928c"></script>
+  <script src="js/gps.js?v=20260928d"></script>
+  <script src="js/data.js?v=20260928d"></script>
   <script src="js/auth.js"></script>
-  <script src="js/student.js?v=20260928c"></script>
-  <script src="js/teacher.js?v=20260928c"></script>
+  <script src="js/student.js?v=20260928d"></script>
+  <script src="js/teacher.js?v=20260928d"></script>
   <script src="js/seed-kc-project.js"></script>
-  <script src="js/app.js?v=20260928c"></script>
+  <script src="js/app.js?v=20260928d"></script>
   <style>
     /* Make header stretch with teacher-wide main */
     #mainContainer.teacher-wide ~ * {}
