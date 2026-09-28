@@ -1,3 +1,6 @@
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
     }
   }
 
