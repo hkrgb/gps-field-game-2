@@ -1,6 +1,6 @@
 # GPS 實地考察遊戲平台 2.0
 
-多租戶靜態網站：任何學校老師（Google／學校網域 Gmail）可建立多個 GPS＋問題專案；每個專案有獨立公開代碼（slug）。隊伍以 GPS 到達指定範圍後解鎖問題並提交答案。
+靜態網站＋共用老師工作區：已登入的老師（Google／學校網域 Gmail）共用同一個後端，可一起建立／編輯／監察所有 GPS＋問題專案；每個專案有獨立公開代碼（slug）。隊伍以 GPS 到達指定範圍後解鎖問題並提交答案。
 
 技術棧：**GitHub Pages 就緒靜態站** ＋ **Firebase Auth / Firestore / Storage**；未設定 Firebase 時自動進入 **Demo 模式**（localStorage）。
 
@@ -88,15 +88,16 @@ firebase deploy --only firestore:rules,storage
 
 ## 使用說明
 
-### 老師
+### 老師（共用工作區）
 
 1. 管理員分頁 → Google 登入。  
-2. 新增專案（標題＋公開代碼）。  
-3. 設定 GPS 範圍、字級、是否顯示測試模式。  
-4. 新增地區（座標、簡介、指引圖 URL）與問題（多項選擇／短句子，可附圖）。  
-5. 新增隊伍名稱與密碼，派給學生。  
-6. 「監察」查看登入時間、完成進度、答案；可匯出 CSV。  
-7. 可複製／刪除專案。
+2. 登入後看到**全部專案**（非個人專屬列表）；老師 A、B 操作同一後端。  
+3. 新增專案（標題＋公開代碼）；仍會記錄 `ownerUid`／`createdBy` 作稽核，但不影響可見性。  
+4. 設定 GPS 範圍、字級、是否顯示測試模式。  
+5. 新增地區（座標、簡介、指引圖 URL）與問題（多項選擇／短句子，可附圖）。  
+6. 新增隊伍名稱與密碼，派給學生。  
+7. 「監察」查看登入時間、完成進度、答案；可匯出 CSV。  
+8. 可複製／刪除專案（任何已登入老師皆可）。
 
 ### 隊伍／學生
 
@@ -113,9 +114,11 @@ firebase deploy --only firestore:rules,storage
 
 `firestore.rules` / `storage.rules` 為**校內 MVP** 友善設定：
 
+- **共用老師工作區**：任何已通過 Firebase Auth（Google）的帳號皆可讀寫專案／地點／隊伍／提交／監察。風險：帳號外洩即可改刪資料。正式環境請改老師白名單、自訂 claim，或限制 `ALLOWED_TEACHER_DOMAIN`。  
 - 隊伍密碼**明文**存於 Firestore，且客戶端可讀（方便驗證）。正式環境請改：Cloud Function 登入、只存雜湊、禁止讀 `password`。  
 - 提交與 `teamSessions` 寫入較寬鬆，公開網際網路部署前請收緊並啟用 **App Check**。  
-- 建議限制老師電郵網域、定期匯出備份、勿把服務帳戶金鑰放進前端。
+- 建議限制老師電郵網域、定期匯出備份、勿把服務帳戶金鑰放進前端。  
+- 部署規則後請在 Firebase Console 重新發佈 Firestore／Storage rules。
 
 ---
 
@@ -125,7 +128,7 @@ firebase deploy --only firestore:rules,storage
 - **Demo 自動偵測**：`YOUR_*` 佔位或 `?demo=1` → localStorage，方便試 UI。  
 - **每地區獨立提交**：方便老師即時監察；進度以 `completedLocationIds`＋本地草稿雙軌。  
 - **測試模式**：沿用 v1 體驗，由專案設定開關。  
-- **圖片以 URL／Storage**：Demo 可用 Data URL；正式可用 Storage 規則上傳。
+- **圖片以 URL／Storage**：Demo 可用 Data URL；正式可用 Storage 規則上傳。  
 
 ---
 
