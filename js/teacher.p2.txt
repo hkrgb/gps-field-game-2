@@ -1,3 +1,31 @@
+
+  async function openEditor(projectId) {
+    StudentUI.showLoading(true);
+    try {
+      currentProject = await DataStore.getProject(projectId);
+      if (!currentProject) throw new Error("專案不存在");
+      locations = await DataStore.listLocations(projectId);
+      teams = await DataStore.listTeams(projectId);
+      showTeacherSection("editor");
+      fillSettingsForm();
+      renderLocList();
+      renderTeamList();
+      switchEditorTab("settings");
+      window.location.hash = "#/teacher/edit/" + projectId;
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  function fillSettingsForm() {
+    const p = currentProject;
+    document.getElementById("edTitle").value = p.title || "";
+    document.getElementById("edSubtitle").value = p.subtitle || "";
+    document.getElementById("edSlug").value = p.slug || "";
+    document.getElementById("edRadius").value = p.gpsRadiusMeters ?? 50;
+    document.getElementById("edFont").value = p.fontSize || "base";
     document.getElementById("edTestMode").checked = p.showTestMode !== false;
   }
 
@@ -12,19 +40,25 @@
       alert("此代碼已被其他專案使用");
       return;
     }
+    const authed = await requireTeacherAuth("儲存設定");
+    if (!authed) return;
     StudentUI.showLoading(true);
     try {
-      currentProject = await DataStore.updateProject(currentProject.id, {
-        title: document.getElementById("edTitle").value.trim(),
-        subtitle: document.getElementById("edSubtitle").value.trim(),
-        slug,
-        gpsRadiusMeters: parseInt(document.getElementById("edRadius").value, 10) || 50,
-        fontSize: document.getElementById("edFont").value,
-        showTestMode: document.getElementById("edTestMode").checked
-      });
+      currentProject = await withTimeout(
+        DataStore.updateProject(currentProject.id, {
+          title: document.getElementById("edTitle").value.trim(),
+          subtitle: document.getElementById("edSubtitle").value.trim(),
+          slug,
+          gpsRadiusMeters: parseInt(document.getElementById("edRadius").value, 10) || 50,
+          fontSize: document.getElementById("edFont").value,
+          showTestMode: document.getElementById("edTestMode").checked
+        }),
+        15000,
+        "儲存設定"
+      );
       alert("設定已儲存");
     } catch (e) {
-      alert(e.message);
+      alert(writeErrorMessage(e));
     } finally {
       StudentUI.showLoading(false);
     }
@@ -176,18 +210,30 @@
       .value.split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    StudentUI.showLoading(true);
+    const authed = await requireTeacherAuth("儲存地區");
+    if (!authed) return;
+    setLocSaveBusy(true);
     try {
-      await DataStore.upsertLocation(currentProject.id, editingLocId, {
-        name,
-        description: document.getElementById("lmDesc").value.trim(),
-        lat: parseFloat(document.getElementById("lmLat").value) || 0,
-        lng: parseFloat(document.getElementById("lmLng").value) || 0,
-        order: parseInt(document.getElementById("lmOrder").value, 10) || 1,
-        images,
-        questions
-      });
+      await withTimeout(
+        DataStore.upsertLocation(currentProject.id, editingLocId, {
+          name,
+          description: document.getElementById("lmDesc").value.trim(),
+          lat: parseFloat(document.getElementById("lmLat").value) || 0,
+          lng: parseFloat(document.getElementById("lmLng").value) || 0,
+          order: parseInt(document.getElementById("lmOrder").value, 10) || 1,
+          images,
+          questions
+        }),
+        15000,
+        "儲存地區"
+      );
       locations = await DataStore.listLocations(currentProject.id);
       closeLocModal();
       renderLocList();
     } catch (e) {
+      alert(writeErrorMessage(e, "儲存失敗"));
+    } finally {
+      setLocSaveBusy(false);
+      StudentUI.showLoading(false);
+    }
+  }
