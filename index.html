@@ -223,15 +223,18 @@
       </div>
 
       <div id="teacherMonitor" class="hidden space-y-3">
-        <div class="flex justify-between items-center gap-2">
+        <div class="flex justify-between items-center gap-2 flex-wrap">
           <button id="btnBackProjects2" type="button" class="text-xs text-emerald-700 hover:underline"><i class="fa-solid fa-arrow-left"></i> 專案列表</button>
-          <button id="btnExportCsv" type="button" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-file-csv"></i> 匯出 CSV</button>
+          <div class="flex gap-1.5">
+            <button id="btnRefreshMonitor" type="button" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-rotate"></i> 重新整理</button>
+            <button id="btnExportCsv" type="button" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-file-csv"></i> 匯出 CSV</button>
+          </div>
         </div>
         <h2 id="monTitle" class="font-bold text-slate-800">監察</h2>
-        <h3 class="text-sm font-bold text-slate-700">隊伍登入／進度</h3>
+        <p class="text-[11px] text-slate-500">各隊伍完成進度與大約位置（相對最近檢查點）。點擊卡片可查看答題內容。</p>
         <div id="monSessions" class="space-y-2"></div>
-        <h3 class="text-sm font-bold text-slate-700 pt-2">提交內容</h3>
-        <div id="monSubmissions" class="space-y-2"></div>
+        <div id="monTeamDetail" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3"></div>
+        <div id="monSubmissions" class="hidden"></div>
       </div>
     </section>
   </main>
@@ -263,7 +266,7 @@
           </div>
         </div>
         <div>
-          <label class="font-semibold text-slate-700">排序</label>
+          <label class="font-semibold text-slate-700">排序編號 <span class="font-normal text-slate-400">（可選；列表↑↓會自動重編）</span></label>
           <input id="lmOrder" type="number" class="w-full mt-1 px-3 py-2 border rounded-lg">
         </div>
         <div>
@@ -292,13 +295,13 @@
   </div>
 
   <script src="js/firebase-config.js"></script>
-  <script src="js/gps.js"></script>
-  <script src="js/data.js"></script>
+  <script src="js/gps.js?v=20260928c"></script>
+  <script src="js/data.js?v=20260928c"></script>
   <script src="js/auth.js"></script>
-  <script src="js/student.js"></script>
-  <script src="js/teacher.js"></script>
+  <script src="js/student.js?v=20260928c"></script>
+  <script src="js/teacher.js?v=20260928c"></script>
   <script src="js/seed-kc-project.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=20260928c"></script>
   <style>
     /* Make header stretch with teacher-wide main */
     #mainContainer.teacher-wide ~ * {}
