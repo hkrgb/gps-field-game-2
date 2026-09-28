@@ -1,3 +1,8 @@
+    } catch (e) {
+      console.warn("upsertLocation: updatedAt touch failed", e && e.message);
+    }
+    return { id, ...payload };
+  }
 
   async function deleteLocation(projectId, locId) {
     if (demo) {
@@ -351,6 +356,7 @@
     uid,
     getProjectBySlug,
     getProject,
+    listAllProjects,
     listProjectsByOwner,
     createProject,
     updateProject,
