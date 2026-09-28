@@ -29,10 +29,23 @@
     }
     const map = L.map(el, { zoomControl: true, attributionControl: true });
     trailMapInstance = map;
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "(c) OpenStreetMap"
-    }).addTo(map);
+    // LandsD GeoInfo Map (public XYZ) — basemap + TC labels
+    L.tileLayer(
+      "https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/WGS84/{z}/{x}/{y}.png",
+      {
+        minZoom: 10,
+        maxZoom: 20,
+        attribution: "地圖資料 © 地政總署 Lands Department"
+      }
+    ).addTo(map);
+    L.tileLayer(
+      "https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/WGS84/{z}/{x}/{y}.png",
+      {
+        minZoom: 10,
+        maxZoom: 20,
+        attribution: ""
+      }
+    ).addTo(map);
     const fitPts = pts.slice();
     if (pts.length) {
       L.polyline(pts, {
