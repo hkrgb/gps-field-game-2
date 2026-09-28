@@ -71,7 +71,8 @@ firebase deploy --only firestore:rules,storage
   - 問題：`{ id, type: 'mcq'|'text', text, options?, imageUrl?, order }`  
 - `projects/{projectId}/teams/{teamId}` — `name`, `password`（MVP 明文；正式應雜湊）  
 - `projects/{projectId}/submissions/{id}` — `teamId`, `teamName`, `locationId`, `answers`, `submittedAt`, `coords?`  
-- `projects/{projectId}/teamSessions/{teamId}` — `lastLoginAt`, `completedLocationIds[]`  
+- `projects/{projectId}/teamSessions/{teamId}` — `lastLoginAt`, `completedLocationIds[]`, `lastLat/lng`, `lastGpsAt`, `trail[{lat,lng,at}]`（上限約 300）, `unlockedEdits`, `locationAnswers`
+- 提交後預設鎖定；老師可於監察頁解鎖指定隊伍＋地區再編輯。監察頁含 GPS 時間軸與 Leaflet 路徑圖。「清除資料」刪提交／進度／軌跡，保留地區與隊伍。  
 
 ---
 
