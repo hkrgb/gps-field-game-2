@@ -12,9 +12,9 @@ window.TeacherUI = (function () {
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&" + "amp;")
-      .replace(/</g, "&" + "lt;")
-      .replace(/>/g, "&" + "gt;")
-      .replace(/"/g, "&" + "quot;");
+      .replace(/</g, "<" + "lt;")
+      .replace(/>/g, ">" + "gt;")
+      .replace(/"/g, "" + "quot;");
   }
 
   async function start(sess) {
@@ -65,8 +65,12 @@ window.TeacherUI = (function () {
         const card = document.createElement("div");
         card.className =
           "bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3";
-        const urlHint =
+        const qs =
           "?p=" + encodeURIComponent(p.slug) + (DataStore.isDemo() ? "&demo=1" : "");
+        const publicUrl =
+          window.location.origin +
+          window.location.pathname.replace(/\/index\.html$/i, "/") +
+          qs;
         card.innerHTML =
           '<div class="min-w-0">' +
           '<div class="font-bold text-slate-800">' +
@@ -77,9 +81,13 @@ window.TeacherUI = (function () {
           "</code> · GPS " +
           (p.gpsRadiusMeters || 50) +
           "m</div>" +
-          '<div class="text-[11px] text-slate-400 mt-1 truncate">公開連結參數：' +
-          esc(urlHint) +
-          "</div></div>" +
+          '<div class="text-[11px] text-emerald-700 mt-1 break-all">' +
+          '<span class="text-slate-400">專案網址：</span>' +
+          '<a href="' +
+          esc(publicUrl) +
+          '" target="_blank" rel="noopener" class="underline break-all">' +
+          esc(publicUrl) +
+          "</a></div></div>" +
           '<div class="flex flex-wrap gap-1.5 shrink-0">' +
           '<button data-act="edit" class="px-2.5 py-1.5 text-xs bg-emerald-600 text-white rounded-lg">編輯</button>' +
           '<button data-act="monitor" class="px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg">監察</button>' +
@@ -207,8 +215,3 @@ window.TeacherUI = (function () {
     document.getElementById("edSlug").value = p.slug || "";
     document.getElementById("edRadius").value = p.gpsRadiusMeters ?? 50;
     document.getElementById("edFont").value = p.fontSize || "base";
-    document.getElementById("edTestMode").checked = p.showTestMode !== false;
-  }
-
-  async function saveSettings() {
-    const slug = document.getElementById("edSlug").value.trim().toLowerCase();
