@@ -1,1 +1,310 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#047857">
+  <title>GPS 實地考察遊戲 2.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 pb-20">
+
+  <!-- Sticky header (hidden on landing) -->
+  <header id="appHeader" class="hidden bg-emerald-700 text-white shadow-md sticky top-0 z-50">
+    <div id="headerInner" class="max-w-md mx-auto px-3 py-2.5 flex items-center justify-between gap-2 teacher-header-wrap">
+      <div class="flex items-center gap-2 min-w-0">
+        <button id="btnHome" type="button" class="w-9 h-9 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center shrink-0" title="回主頁">
+          <i class="fa-solid fa-house text-sm"></i>
+        </button>
+        <div class="min-w-0">
+          <div id="headerUserName" class="font-bold text-sm truncate">—</div>
+          <div id="progressSquares" class="flex flex-wrap gap-1 mt-0.5"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <span id="demoBadge" class="hidden text-[10px] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.5 rounded">DEMO</span>
+        <button id="testModeBtn" type="button" class="hidden bg-emerald-800 hover:bg-emerald-900 text-[11px] px-2 py-1.5 rounded-lg border border-emerald-500/30">
+          <span id="testStatusText">測試: 關</span>
+        </button>
+        <button id="btnLogout" type="button" class="bg-white/15 hover:bg-white/25 text-xs px-2.5 py-1.5 rounded-lg">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div id="bootLoading" class="text-center py-24">
+    <i class="fa-solid fa-spinner fa-spin text-3xl text-emerald-600 mb-3"></i>
+    <p class="text-sm text-slate-600">載入中…</p>
+  </div>
+
+  <main id="mainContainer" class="px-4 pt-4">
+
+    <!-- ===== LANDING ===== -->
+    <section id="view-landing" class="hidden animate-fade-in">
+      <div class="text-center mb-6 pt-4">
+        <div class="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-3 text-3xl shadow-sm">
+          <i class="fa-solid fa-compass"></i>
+        </div>
+        <h1 class="text-xl font-bold text-slate-800">GPS 實地考察遊戲</h1>
+        <p class="text-xs text-slate-500 mt-1">多校共用平台 · 到達地點解鎖問題</p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
+        <div class="flex gap-2">
+          <button type="button" data-login-tab="team" class="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-emerald-600 text-white">隊伍登入</button>
+          <button type="button" data-login-tab="admin" class="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-slate-100 text-slate-600">管理員</button>
+        </div>
+
+        <div id="panelTeam">
+          <form id="teamLoginForm" class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">專案代碼／學校代碼</label>
+              <input id="teamSlug" required autocomplete="off" placeholder="例如：cheungchau-demo" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">隊伍名稱</label>
+              <input id="teamName" required autocomplete="username" placeholder="例如：示範隊" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">密碼</label>
+              <input id="teamPassword" type="password" required autocomplete="current-password" placeholder="密碼" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600">
+              <p class="font-semibold text-slate-700 flex items-center gap-1 mb-1"><i class="fa-solid fa-location-dot text-emerald-600"></i> GPS 解鎖說明</p>
+              <p>到達各指定地區範圍內（預設約 50 米），對應問題才會顯示。未到達仍可查看地區資料與圖片指引。</p>
+            </div>
+            <p id="teamLoginError" class="hidden text-xs text-rose-600"></p>
+            <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow text-sm flex items-center justify-center gap-2">
+              開始考察 <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </form>
+          <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 space-y-1">
+            <p class="font-bold">Demo 試用（無需 Firebase）</p>
+            <p>代碼 <code class="bg-white px-1 rounded">cheungchau-demo</code> · 隊伍 <code class="bg-white px-1 rounded">示範隊</code> · 密碼 <code class="bg-white px-1 rounded">demo</code></p>
+            <p>亦可：第1組／第2組，密碼 <code class="bg-white px-1 rounded">1234</code></p>
+            <button type="button" id="btnResetDemo" class="mt-1 text-amber-800 underline">重設 Demo 資料</button>
+          </div>
+        </div>
+
+        <div id="panelAdmin" class="hidden space-y-3">
+          <p class="text-xs text-slate-600">老師以 Google 帳號登入後，可建立／管理自己的考察專案。Demo 模式下會以「示範老師」身分進入本地後台。</p>
+          <button type="button" id="btnTeacherLogin" class="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
+            <i class="fa-brands fa-google"></i> 老師 Google 登入
+          </button>
+          <p id="adminLoginError" class="hidden text-xs text-rose-600"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== HUB ===== -->
+    <section id="view-hub" class="hidden space-y-3 animate-fade-in">
+      <div>
+        <h2 id="hubTitle" class="text-lg font-bold text-slate-800">考察任務</h2>
+        <p id="hubSubtitle" class="text-xs text-slate-500 mt-0.5"></p>
+      </div>
+      <div class="flex justify-between items-center">
+        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i class="fa-solid fa-map-location-dot text-emerald-600"></i> 任務地區</h3>
+        <button id="btnRefreshGps" type="button" class="text-xs bg-slate-200 hover:bg-slate-300 px-2.5 py-1 rounded-lg text-slate-700 flex items-center gap-1">
+          <i class="fa-solid fa-arrows-rotate text-[10px]"></i> 刷新定位
+        </button>
+      </div>
+      <div id="gpsBanner" class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs flex items-center gap-2">
+        <i class="fa-solid fa-spinner fa-spin text-amber-600" id="gpsIcon"></i>
+        <span id="gpsMessage">正在擷取 GPS 位置…</span>
+      </div>
+      <div id="hubCards" class="space-y-3"></div>
+    </section>
+
+    <!-- ===== LOCATION PAGE ===== -->
+    <section id="view-location" class="hidden animate-fade-in space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3">
+        <div class="flex justify-between items-start gap-2">
+          <h2 id="locPageTitle" class="text-lg font-bold text-slate-800"></h2>
+          <button id="btnBackHub" type="button" class="text-slate-400 hover:text-slate-600 text-xl p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <p id="locPageDesc" class="text-sm text-slate-600"></p>
+        <div id="locPageImages" class="space-y-2"></div>
+      </div>
+
+      <div id="locLockBanner" class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
+        <p class="font-bold flex items-center gap-2"><i class="fa-solid fa-lock"></i> 問題尚未解鎖</p>
+        <p id="locLockMsg" class="text-xs mt-1.5"></p>
+      </div>
+
+      <div id="locQuestionsSection" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
+        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i class="fa-solid fa-pen-to-square text-emerald-600"></i> 考察問題</h3>
+        <div id="locQuestions" class="space-y-3"></div>
+        <button id="btnSubmitLoc" type="button" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
+          <i class="fa-solid fa-paper-plane"></i> 提交此地區答案
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== TEACHER ===== -->
+    <section id="view-teacher" class="hidden animate-fade-in space-y-4">
+
+      <div id="teacherProjects" class="space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-folder-open text-emerald-600"></i> 我的專案</h2>
+          <button id="btnNewProject" type="button" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-semibold">+ 新增專案</button>
+        </div>
+        <div id="projectList" class="space-y-3"></div>
+      </div>
+
+      <div id="teacherEditor" class="hidden space-y-3">
+        <div class="flex justify-between items-center">
+          <button id="btnBackProjects" type="button" class="text-xs text-emerald-700 hover:underline"><i class="fa-solid fa-arrow-left"></i> 專案列表</button>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-3">
+          <div class="flex gap-2 mb-3">
+            <button id="edTab_settings" type="button" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white">設定</button>
+            <button id="edTab_locations" type="button" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700">地區／問題</button>
+            <button id="edTab_teams" type="button" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700">隊伍</button>
+          </div>
+
+          <div id="edPanel_settings" class="space-y-3 text-xs">
+            <div>
+              <label class="font-semibold text-slate-700">標題</label>
+              <input id="edTitle" class="w-full mt-1 px-3 py-2 border rounded-lg">
+            </div>
+            <div>
+              <label class="font-semibold text-slate-700">副標題</label>
+              <input id="edSubtitle" class="w-full mt-1 px-3 py-2 border rounded-lg">
+            </div>
+            <div>
+              <label class="font-semibold text-slate-700">公開代碼（slug）</label>
+              <input id="edSlug" class="w-full mt-1 px-3 py-2 border rounded-lg font-mono">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-semibold text-slate-700">GPS 範圍（米）</label>
+                <input id="edRadius" type="number" min="10" max="2000" class="w-full mt-1 px-3 py-2 border rounded-lg">
+              </div>
+              <div>
+                <label class="font-semibold text-slate-700">字級</label>
+                <select id="edFont" class="w-full mt-1 px-3 py-2 border rounded-lg">
+                  <option value="sm">較小</option>
+                  <option value="base">標準</option>
+                  <option value="lg">較大</option>
+                </select>
+              </div>
+            </div>
+            <label class="flex items-center justify-between py-2 border-t border-slate-100">
+              <span class="font-semibold text-slate-700">顯示測試模式掣</span>
+              <input id="edTestMode" type="checkbox" class="w-4 h-4 accent-emerald-600">
+            </label>
+            <button id="btnSaveSettings" type="button" class="w-full py-2.5 bg-emerald-600 text-white font-semibold rounded-xl">儲存設定</button>
+          </div>
+
+          <div id="edPanel_locations" class="hidden space-y-3">
+            <div class="flex justify-between items-center">
+              <h3 class="text-sm font-bold text-slate-700">地區列表</h3>
+              <button id="btnAddLoc" type="button" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg">+ 新增地區</button>
+            </div>
+            <div id="edLocList" class="space-y-2"></div>
+          </div>
+
+          <div id="edPanel_teams" class="hidden space-y-3">
+            <div class="flex justify-between items-center">
+              <h3 class="text-sm font-bold text-slate-700">隊伍帳號</h3>
+              <button id="btnAddTeam" type="button" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg">+ 新增隊伍</button>
+            </div>
+            <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">MVP 以明文儲存密碼，僅適合校內封閉使用；正式環境請改雜湊（見 README）。</p>
+            <div id="edTeamList" class="space-y-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="teacherMonitor" class="hidden space-y-3">
+        <div class="flex justify-between items-center gap-2">
+          <button id="btnBackProjects2" type="button" class="text-xs text-emerald-700 hover:underline"><i class="fa-solid fa-arrow-left"></i> 專案列表</button>
+          <button id="btnExportCsv" type="button" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-file-csv"></i> 匯出 CSV</button>
+        </div>
+        <h2 id="monTitle" class="font-bold text-slate-800">監察</h2>
+        <h3 class="text-sm font-bold text-slate-700">隊伍登入／進度</h3>
+        <div id="monSessions" class="space-y-2"></div>
+        <h3 class="text-sm font-bold text-slate-700 pt-2">提交內容</h3>
+        <div id="monSubmissions" class="space-y-2"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Location edit modal -->
+  <div id="locModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-800 text-sm" id="locModalTitle">編輯地區</h3>
+        <button id="btnCloseLocModal" type="button" class="text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="font-semibold text-slate-700">地區名稱</label>
+          <input id="lmName" class="w-full mt-1 px-3 py-2 border rounded-lg">
+        </div>
+        <div>
+          <label class="font-semibold text-slate-700">簡介／指引</label>
+          <textarea id="lmDesc" rows="2" class="w-full mt-1 px-3 py-2 border rounded-lg"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="font-semibold text-slate-700">緯度 lat</label>
+            <input id="lmLat" type="number" step="any" class="w-full mt-1 px-3 py-2 border rounded-lg">
+          </div>
+          <div>
+            <label class="font-semibold text-slate-700">經度 lng</label>
+            <input id="lmLng" type="number" step="any" class="w-full mt-1 px-3 py-2 border rounded-lg">
+          </div>
+        </div>
+        <div>
+          <label class="font-semibold text-slate-700">排序</label>
+          <input id="lmOrder" type="number" class="w-full mt-1 px-3 py-2 border rounded-lg">
+        </div>
+        <div>
+          <label class="font-semibold text-slate-700">指引圖片 URL（每行一個）</label>
+          <textarea id="lmImages" rows="2" class="w-full mt-1 px-3 py-2 border rounded-lg" placeholder="https://…"></textarea>
+        </div>
+        <div>
+          <label class="font-semibold text-slate-700 mb-1 block">問題列表</label>
+          <div id="lmQuestions" class="space-y-2"></div>
+          <button type="button" id="btnAddQuestion" class="mt-2 text-xs text-emerald-600 hover:underline">+ 新增問題</button>
+        </div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button id="btnCancelLocModal" type="button" class="w-1/3 py-2 bg-slate-100 text-xs rounded-xl">取消</button>
+        <button id="btnSaveLocModal" type="button" class="w-2/3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global loading -->
+  <div id="globalLoading" class="hidden fixed inset-0 bg-slate-900/50 z-[60] flex items-center justify-center">
+    <div class="bg-white rounded-2xl px-6 py-5 shadow-xl text-center">
+      <i class="fa-solid fa-spinner fa-spin text-2xl text-emerald-600"></i>
+      <p class="text-xs text-slate-600 mt-2">處理中…</p>
+    </div>
+  </div>
+
+  <script src="js/firebase-config.js"></script>
+  <script src="js/gps.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/student.js"></script>
+  <script src="js/teacher.js"></script>
+  <script src="js/seed-kc-project.js"></script>
+  <script src="js/app.js"></script>
+  <style>
+    /* Make header stretch with teacher-wide main */
+    #mainContainer.teacher-wide ~ * {}
+    body:has(#mainContainer.teacher-wide) #headerInner {
+      max-width: 56rem;
+    }
+  </style>
+</body>
+</html>
