@@ -1,100 +1,138 @@
-  function renderQuestions(loc, readOnly) {
+  function renderQuestions(loc, readOnly, gpsUnlocked) {
     const container = document.getElementById("locQuestions");
     container.innerHTML = "";
+    if (typeof gpsUnlocked !== "boolean") {
+      gpsUnlocked = isLocationGpsUnlocked(loc) || !!testMode;
+    }
     // Prefer server locationAnswers; draft only fills gaps for unsubmitted fields
     const answers = answersForLocation(loc.id);
     const lockedNote = document.getElementById("locLockedNote");
     if (lockedNote) {
       lockedNote.classList.toggle("hidden", !readOnly);
     }
+    const sortedQs = (loc.questions || [])
+      .slice()
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    const answerableCount = sortedQs.filter(function (q) {
+      return gpsUnlocked || !questionRequiresGps(q);
+    }).length;
     const submitBtn = document.getElementById("btnSubmitLoc");
     if (submitBtn) {
-      if (readOnly) {
+      if (readOnly || !answerableCount) {
         submitBtn.classList.add("hidden");
       } else {
         submitBtn.classList.remove("hidden");
         const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
-        submitBtn.innerHTML = isUpdate
-          ? '<i class="fa-solid fa-rotate"></i> 更新此地區答案'
-          : '<i class="fa-solid fa-paper-plane"></i> 提交此地區答案';
+        const partialOnly = !gpsUnlocked && locationHasOptionalQuestions(loc);
+        if (isUpdate) {
+          submitBtn.innerHTML =
+            '<i class="fa-solid fa-rotate"></i> 更新此地區答案';
+        } else if (partialOnly) {
+          submitBtn.innerHTML =
+            '<i class="fa-solid fa-paper-plane"></i> 提交可先答題目';
+        } else {
+          submitBtn.innerHTML =
+            '<i class="fa-solid fa-paper-plane"></i> 提交此地區答案';
+        }
       }
     }
-    (loc.questions || [])
-      .slice()
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .forEach((q, idx) => {
-        const box = document.createElement("div");
-        box.className = "bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2";
-        let html =
-          '<label class="block text-sm font-semibold text-slate-800">' +
-          (idx + 1) +
-          ". " +
-          escapeHtml(q.text) +
-          "</label>";
-        if (q.imageUrl) {
+    sortedQs.forEach((q, idx) => {
+      const needsGps = questionRequiresGps(q);
+      const gpsLocked = needsGps && !gpsUnlocked;
+      const fieldReadOnly = readOnly || gpsLocked;
+      const box = document.createElement("div");
+      box.className = gpsLocked
+        ? "bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2 opacity-90"
+        : "bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2";
+      let badge = "";
+      if (gpsLocked) {
+        badge =
+          ' <span class="inline-flex items-center gap-1 text-[10px] font-medium text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5 ml-1"><i class="fa-solid fa-lock"></i> 須到達 GPS</span>';
+      } else if (!needsGps) {
+        badge =
+          ' <span class="inline-flex items-center gap-1 text-[10px] font-medium text-sky-800 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5 ml-1">不須到達</span>';
+      }
+      let html =
+        '<label class="block text-sm font-semibold text-slate-800">' +
+        (idx + 1) +
+        ". " +
+        escapeHtml(q.text) +
+        badge +
+        "</label>";
+      if (q.imageUrl) {
+        html +=
+          '<img src="' +
+          escapeAttr(q.imageUrl) +
+          '" class="rounded-lg max-h-40 w-full object-cover img-zoomable" alt="" data-lightbox="1">';
+      }
+      const saved = answers[q.id] || "";
+      if (gpsLocked) {
+        html +=
+          '<div class="text-xs text-amber-900 bg-white/70 border border-amber-100 rounded-lg px-3 py-2">' +
+          '<i class="fa-solid fa-location-dot mr-1"></i>到達此地區 GPS 範圍後才可作答。' +
+          (saved
+            ? '<div class="mt-1 text-slate-600">已存答案（到達後可再改）：' +
+              escapeHtml(String(saved)) +
+              "</div>"
+            : "") +
+          "</div>";
+      } else if (q.type === "mcq" && q.options && q.options.length) {
+        html += '<div class="space-y-1">';
+        q.options.forEach((opt) => {
+          const checked = saved === opt ? "checked" : "";
+          const dis = fieldReadOnly ? "disabled" : "";
           html +=
-            '<img src="' +
-            escapeAttr(q.imageUrl) +
-            '" class="rounded-lg max-h-40 w-full object-cover img-zoomable" alt="" data-lightbox="1">';
-        }
-        const saved = answers[q.id] || "";
-        if (q.type === "mcq" && q.options && q.options.length) {
-          html += '<div class="space-y-1">';
-          q.options.forEach((opt) => {
-            const checked = saved === opt ? "checked" : "";
-            const dis = readOnly ? "disabled" : "";
-            html +=
-              '<label class="flex items-start gap-2 py-1.5 px-2 rounded-lg ' +
-              (readOnly ? "" : "hover:bg-white cursor-pointer ") +
-              'text-sm">' +
-              '<input type="radio" name="q_' +
-              escapeAttr(q.id) +
-              '" value="' +
-              escapeAttr(opt) +
-              '" class="mt-1" ' +
-              checked +
-              " " +
-              dis +
-              "> <span>" +
-              escapeHtml(opt) +
-              "</span></label>";
-          });
-          html += "</div>";
-        } else {
-          html +=
-            '<textarea data-qid="' +
+            '<label class="flex items-start gap-2 py-1.5 px-2 rounded-lg ' +
+            (fieldReadOnly ? "" : "hover:bg-white cursor-pointer ") +
+            'text-sm">' +
+            '<input type="radio" name="q_' +
             escapeAttr(q.id) +
-            '" rows="2" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…" ' +
-            (readOnly ? "readonly" : "") +
-            ">" +
-            escapeHtml(saved) +
-            "</textarea>";
-        }
-        box.innerHTML = html;
-        container.appendChild(box);
-        box.querySelectorAll("img.img-zoomable").forEach(function (im) {
-          im.onclick = function () {
-            openLightbox(im.src, loc.name || "");
-          };
+            '" value="' +
+            escapeAttr(opt) +
+            '" class="mt-1" ' +
+            checked +
+            " " +
+            dis +
+            "> <span>" +
+            escapeHtml(opt) +
+            "</span></label>";
         });
-        if (readOnly) return;
-        box.querySelectorAll('input[type="radio"]').forEach((radio) => {
-          radio.onchange = () => {
-            if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
-            draftAnswers[loc.id][q.id] = radio.value;
-            saveDrafts();
-            renderProgressSquares();
-          };
-        });
-        const ta = box.querySelector("textarea");
-        if (ta) {
-          ta.oninput = () => {
-            if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
-            draftAnswers[loc.id][q.id] = ta.value;
-            saveDrafts();
-            renderProgressSquares();
-          };
-        }
+        html += "</div>";
+      } else {
+        html +=
+          '<textarea data-qid="' +
+          escapeAttr(q.id) +
+          '" rows="2" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…" ' +
+          (fieldReadOnly ? "readonly" : "") +
+          ">" +
+          escapeHtml(saved) +
+          "</textarea>";
+      }
+      box.innerHTML = html;
+      container.appendChild(box);
+      box.querySelectorAll("img.img-zoomable").forEach(function (im) {
+        im.onclick = function () {
+          openLightbox(im.src, loc.name || "");
+        };
       });
+      if (fieldReadOnly) return;
+      box.querySelectorAll('input[type="radio"]').forEach((radio) => {
+        radio.onchange = () => {
+          if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
+          draftAnswers[loc.id][q.id] = radio.value;
+          saveDrafts();
+          renderProgressSquares();
+        };
+      });
+      const ta = box.querySelector("textarea");
+      if (ta) {
+        ta.oninput = () => {
+          if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
+          draftAnswers[loc.id][q.id] = ta.value;
+          saveDrafts();
+          renderProgressSquares();
+        };
+      }
+    });
   }
 
