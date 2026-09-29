@@ -160,3 +160,50 @@ body.text-sm-mode #mainContainer {
   pointer-events: none;
   z-index: -1;
 }
+
+
+/* Image lightbox (tap to enlarge) */
+.img-zoomable {
+  cursor: zoom-in;
+  -webkit-tap-highlight-color: transparent;
+}
+.img-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  touch-action: manipulation;
+}
+.img-lightbox.hidden {
+  display: none !important;
+}
+.img-lightbox img {
+  max-width: min(96vw, 720px);
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  background: #fff;
+}
+.img-lightbox-close {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  border: none;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  z-index: 1;
+}
