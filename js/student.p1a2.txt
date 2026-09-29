@@ -89,9 +89,10 @@
     container.innerHTML = "";
     const r = radius();
     locations.forEach((loc) => {
+      const needsGps = locationRequiresGps(loc);
       let distance = null;
-      let unlocked = testMode;
-      if (currentCoords) {
+      let unlocked = testMode || !needsGps;
+      if (needsGps && currentCoords) {
         distance = GPS.calculateDistance(
           currentCoords.lat,
           currentCoords.lng,
@@ -99,33 +100,49 @@
           loc.lng
         );
         if (distance <= r) unlocked = true;
+      } else if (needsGps && currentCoords == null) {
+        // waiting GPS
+      } else if (!needsGps && currentCoords) {
+        distance = GPS.calculateDistance(
+          currentCoords.lat,
+          currentCoords.lng,
+          loc.lat,
+          loc.lng
+        );
       }
       const done = isLocComplete(loc.id);
       const card = document.createElement("button");
       card.type = "button";
-      const hasOptionalEarly = locationHasOptionalQuestions(loc);
       card.className =
         "w-full text-left p-4 rounded-2xl border shadow-sm transition " +
         (done
           ? "bg-emerald-50 border-emerald-300"
           : unlocked
             ? "bg-white border-emerald-200 hover:border-emerald-400"
-            : hasOptionalEarly
-              ? "bg-white border-amber-200 hover:border-amber-400"
-              : "bg-slate-50 border-slate-200");
-      if (unlocked && !done) card.classList.add("rainbow-arrived");
-      const distText =
-        distance != null
-          ? "距離約 " + Math.round(distance) + " 米"
-          : "等待 GPS…";
-      const hasOptional = locationHasOptionalQuestions(loc);
-      const statusBadge = done
-        ? '<span class="badge-done">已完成</span>'
-        : unlocked
-          ? '<span class="badge-open">可進入</span>'
-          : hasOptional
-            ? '<span class="badge-open">可先答</span>'
-            : '<span class="badge-lock">未到達</span>';
+            : "bg-slate-50 border-slate-200");
+      // Rainbow / 已到達 framing only for GPS-required locations that are in range
+      if (needsGps && unlocked && !done && !testMode) {
+        card.classList.add("rainbow-arrived");
+      }
+      let distText = "";
+      if (!needsGps) {
+        distText = "不須到達";
+      } else if (distance != null) {
+        distText = "距離約 " + Math.round(distance) + " 米";
+      } else {
+        distText = "等待 GPS…";
+      }
+      let statusBadge = "";
+      if (done) {
+        statusBadge = '<span class="badge-done">已完成</span>';
+      } else if (!needsGps) {
+        // no 未到達 / 可進入 GPS framing — always enterable
+        statusBadge = "";
+      } else if (unlocked) {
+        statusBadge = '<span class="badge-open">可進入</span>';
+      } else {
+        statusBadge = '<span class="badge-lock">未到達</span>';
+      }
       card.innerHTML =
         '<div class="flex justify-between items-start gap-2">' +
         '<div><h3 class="font-bold text-slate-800 text-base">' +
@@ -137,9 +154,12 @@
         statusBadge +
         "</div>" +
         '<div class="mt-3 flex justify-between items-center text-xs text-slate-500">' +
-        "<span><i class=\"fa-solid fa-location-dot mr-1\"></i>" +
+        "<span>" +
+        (needsGps
+          ? '<i class="fa-solid fa-location-dot mr-1"></i>'
+          : '<i class="fa-solid fa-unlock mr-1 text-slate-400"></i>') +
         distText +
-        (unlocked && !done ? " · 範圍內" : "") +
+        (needsGps && unlocked && !done ? " · 範圍內" : "") +
         "</span>" +
         '<span class="font-medium text-emerald-700"><i class="fa-solid fa-arrow-right"></i> 進入</span>' +
         "</div>";
@@ -176,14 +196,20 @@
       imgWrap.appendChild(img);
     });
     if (!(loc.images || []).length) {
+      const needsGpsHint = locationRequiresGps(loc);
       imgWrap.innerHTML =
         '<div class="bg-slate-100 rounded-xl p-6 text-center text-slate-500 text-sm">' +
         '<i class="fa-solid fa-map-location-dot text-2xl text-emerald-500 mb-2"></i>' +
-        "<p>請前往此地區；到達 GPS 範圍後會顯示問題。</p></div>";
+        "<p>" +
+        (needsGpsHint
+          ? "請前往此地區；到達 GPS 範圍後會顯示問題。"
+          : "此地區不須到達 GPS，可直接回答下方問題。") +
+        "</p></div>";
     }
 
     const r = radius();
-    let unlocked = testMode;
+    const needsGps = locationRequiresGps(loc);
+    let unlocked = testMode || !needsGps;
     let distance = null;
     if (currentCoords) {
       distance = GPS.calculateDistance(
@@ -192,33 +218,23 @@
         loc.lat,
         loc.lng
       );
-      if (distance <= r) unlocked = true;
+      if (needsGps && distance <= r) unlocked = true;
     }
 
     const lockBanner = document.getElementById("locLockBanner");
     const qSection = document.getElementById("locQuestionsSection");
     const infoCard = document.getElementById("locInfoCard");
     const done = isLocComplete(loc.id);
-    const hasOptional = locationHasOptionalQuestions(loc);
-    const hasGpsRequired = (loc.questions || []).some(questionRequiresGps);
-    const showQuestions = unlocked || hasOptional;
+    const showQuestions = unlocked || !needsGps;
 
-    if (unlocked) {
+    if (!needsGps || unlocked) {
       lockBanner.classList.add("hidden");
     } else {
       lockBanner.classList.remove("hidden");
       const lockTitle = lockBanner.querySelector("p.font-bold");
       if (lockTitle) {
-        if (hasOptional && hasGpsRequired) {
-          lockTitle.innerHTML =
-            '<i class="fa-solid fa-lock"></i> 部分問題須到達後解鎖';
-        } else if (hasOptional) {
-          lockTitle.innerHTML =
-            '<i class="fa-solid fa-circle-info"></i> 可不須到達先作答';
-        } else {
-          lockTitle.innerHTML =
-            '<i class="fa-solid fa-lock"></i> 問題尚未解鎖';
-        }
+        lockTitle.innerHTML =
+          '<i class="fa-solid fa-lock"></i> 問題尚未解鎖';
       }
       let lockMsg =
         distance != null
@@ -228,24 +244,18 @@
             r +
             " 米內）。"
           : "正在等待 GPS…（需在 " + r + " 米範圍內）。";
-      if (hasOptional && hasGpsRequired) {
-        lockMsg +=
-          "「不須到達」題目可先作答；標示須到達的題目仍鎖定，到達後才可填寫。";
-      } else if (hasOptional) {
-        lockMsg += "此地區題目不須到達，可先作答提交。";
-      } else {
-        lockMsg += "請參考上方指引前往；到達後才會顯示問題。";
-      }
+      lockMsg += "請參考上方指引前往；到達後才會顯示問題。";
       document.getElementById("locLockMsg").textContent = lockMsg;
     }
 
     if (showQuestions) {
       qSection.classList.remove("hidden");
+      const showRainbow = needsGps && unlocked && !done && !testMode;
       if (infoCard) {
-        infoCard.classList.toggle("rainbow-arrived", unlocked && !done);
+        infoCard.classList.toggle("rainbow-arrived", showRainbow);
       }
-      qSection.classList.toggle("rainbow-arrived", unlocked && !done);
-      renderQuestions(loc, isSubmissionLocked(loc.id), unlocked);
+      qSection.classList.toggle("rainbow-arrived", showRainbow);
+      renderQuestions(loc, isSubmissionLocked(loc.id), true);
     } else {
       qSection.classList.add("hidden");
       if (infoCard) infoCard.classList.remove("rainbow-arrived");
