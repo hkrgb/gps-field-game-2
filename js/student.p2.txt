@@ -26,6 +26,10 @@
       return;
     }
     const gpsUnlocked = isLocationGpsUnlocked(loc) || !!testMode;
+    if (!gpsUnlocked) {
+      alert("請先到達此地區 GPS 範圍後再提交。");
+      return;
+    }
     const collected = collectCurrentAnswers(loc);
     const prev =
       (teamSession &&
@@ -33,33 +37,24 @@
         teamSession.locationAnswers[loc.id]) ||
       {};
     const merged = Object.assign({}, prev);
-    const answerable = (loc.questions || []).filter(function (q) {
-      return gpsUnlocked || !questionRequiresGps(q);
-    });
-    // Only write fields that are currently answerable (preserve GPS answers when locked)
-    answerable.forEach(function (q) {
+    const allQs = loc.questions || [];
+    allQs.forEach(function (q) {
       if (collected[q.id] != null) merged[q.id] = collected[q.id];
     });
-    const missing = answerable.filter(function (q) {
+    const missing = allQs.filter(function (q) {
       return !(merged[q.id] || "").toString().trim();
     });
     if (missing.length) {
       alert(
-        "請先回答所有目前可作答的題目（尚欠 " +
+        "請先回答所有題目（尚欠 " +
           missing.length +
           " / " +
-          answerable.length +
+          allQs.length +
           " 題）。"
       );
       return;
     }
-    const allQs = loc.questions || [];
-    const allFilled =
-      allQs.length > 0 &&
-      allQs.every(function (q) {
-        return (merged[q.id] || "").toString().trim();
-      });
-    const markComplete = allFilled;
+    const markComplete = allQs.length > 0;
     const filledCount = allQs.filter(function (q) {
       return (merged[q.id] || "").toString().trim();
     }).length;
@@ -74,9 +69,6 @@
       " 題）";
     if (isUpdate) {
       confirmMsg += "\n更新後會再次鎖定。";
-    } else if (!markComplete) {
-      confirmMsg +=
-        "\n此為部分提交（尚有須到達 GPS 的題目未填）。到達後請再提交其餘題目；完成全部後才會標記此地區完成。";
     }
     if (!confirm(confirmMsg)) {
       return;
@@ -99,10 +91,8 @@
       }
       if (isUpdate) {
         alert("已更新並重新鎖定。");
-      } else if (markComplete) {
-        alert("已提交！此地區已完成。");
       } else {
-        alert("已儲存可先答題目。到達 GPS 範圍後請繼續回答其餘題目。");
+        alert("已提交！此地區已完成。");
       }
       if (!isUpdate && markComplete && isAllComplete()) {
         showCompletion();
