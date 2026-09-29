@@ -1,0 +1,273 @@
+/**
+ * 學生／隊伍端：登入後 Hub、地區內容頁、GPS 解鎖、提交
+ */
+window.StudentUI = (function () {
+  let project = null;
+  let locations = [];
+  let session = null;
+  let teamSession = null;
+  let currentCoords = null;
+  let lastReportedCoords = null;
+  let lastGpsReportAt = 0;
+  let gpsWatchStarted = false;
+  let gpsAutoTimer = null;
+  let testMode = false;
+  let currentLocId = null;
+  let draftAnswers = {}; // locationId -> { qId: value }
+
+  const DRAFT_PREFIX = "gpsgame2_draft_";
+
+  function draftKey() {
+    return DRAFT_PREFIX + (session ? session.projectId + "_" + session.teamId : "");
+  }
+
+  function loadDrafts() {
+    try {
+      draftAnswers = JSON.parse(localStorage.getItem(draftKey()) || "{}");
+    } catch (e) {
+      draftAnswers = {};
+    }
+  }
+
+  function saveDrafts() {
+    localStorage.setItem(draftKey(), JSON.stringify(draftAnswers));
+  }
+
+  function applyFontSize() {
+    const size = (project && project.fontSize) || "base";
+    document.documentElement.style.setProperty(
+      "--app-font-scale",
+      size === "lg" ? "1.125" : size === "sm" ? "0.9" : "1"
+    );
+    document.body.classList.toggle("text-lg-mode", size === "lg");
+    document.body.classList.toggle("text-sm-mode", size === "sm");
+  }
+
+  function radius() {
+    return (project && project.gpsRadiusMeters) || 50;
+  }
+
+  function completedSet() {
+    return new Set((teamSession && teamSession.completedLocationIds) || []);
+  }
+
+  function isEditUnlocked(locId) {
+    const map = (teamSession && teamSession.unlockedEdits) || {};
+    return !!map[locId];
+  }
+
+  function isSubmissionLocked(locId) {
+    if (!completedSet().has(locId)) return false;
+    return !isEditUnlocked(locId);
+  }
+
+  function answersForLocation(locId) {
+    const fromSession =
+      teamSession &&
+      teamSession.locationAnswers &&
+      teamSession.locationAnswers[locId];
+    if (fromSession && typeof fromSession === "object") return fromSession;
+    return draftAnswers[locId] || {};
+  }
+
+
+  function isLocComplete(locId) {
+    if (completedSet().has(locId)) return true;
+    const loc = locations.find((l) => l.id === locId);
+    if (!loc || !(loc.questions || []).length) return false;
+    const answers = draftAnswers[locId] || {};
+    return (loc.questions || []).every((q) => (answers[q.id] || "").toString().trim());
+  }
+
+  function renderProgressSquares() {
+    const el = document.getElementById("progressSquares");
+    if (!el) return;
+    el.innerHTML = "";
+    locations.forEach((loc, i) => {
+      const done = isLocComplete(loc.id);
+      const sq = document.createElement("div");
+      sq.className =
+        "progress-square " + (done ? "filled" : "empty");
+      sq.title = loc.name + (done ? "（已完成）" : "（未完成）");
+      sq.textContent = String(i + 1);
+      el.appendChild(sq);
+    });
+  }
+
+  function syncTestModeFromProject() {
+    testMode = !!(project && project.showTestMode);
+  }
+
+  function updateHeader() {
+    const nameEl = document.getElementById("headerUserName");
+    if (nameEl) nameEl.textContent = session ? session.teamName : "";
+    renderProgressSquares();
+  }
+
+  async function start(sess, proj) {
+    session = sess;
+    project = proj;
+    locations = await DataStore.listLocations(project.id);
+    teamSession = await DataStore.getTeamSession(project.id, session.teamId);
+    loadDrafts();
+    applyFontSize();
+    syncTestModeFromProject();
+    updateHeader();
+    showHub();
+    refreshGPS();
+    startGpsWatch();
+    startGpsAutoInterval();
+  }
+
+  function showView(id) {
+    ["view-landing", "view-hub", "view-location", "view-teacher"].forEach((v) => {
+      const el = document.getElementById(v);
+      if (el) el.classList.toggle("hidden", v !== id);
+    });
+    const header = document.getElementById("appHeader");
+    if (header) {
+      header.classList.toggle("hidden", id === "view-landing");
+    }
+    const maxW = document.getElementById("mainContainer");
+    if (maxW) {
+      maxW.classList.toggle("teacher-wide", id === "view-teacher");
+    }
+    const headerInner = document.getElementById("headerInner");
+    if (headerInner) {
+      headerInner.classList.toggle("max-w-md", id !== "view-teacher");
+      headerInner.classList.toggle("max-w-4xl", id === "view-teacher");
+    }
+  }
+
+  function showHub() {
+    currentLocId = null;
+    showView("view-hub");
+    document.getElementById("hubTitle").textContent = project.title || "考察任務";
+    document.getElementById("hubSubtitle").textContent = project.subtitle || "";
+    renderHubCards();
+    updateHeader();
+    window.location.hash = "#/hub";
+  }
+
+  function renderHubCards() {
+    const container = document.getElementById("hubCards");
+    container.innerHTML = "";
+    const r = radius();
+    locations.forEach((loc) => {
+      let distance = null;
+      let unlocked = testMode;
+      if (currentCoords) {
+        distance = GPS.calculateDistance(
+          currentCoords.lat,
+          currentCoords.lng,
+          loc.lat,
+          loc.lng
+        );
+        if (distance <= r) unlocked = true;
+      }
+      const done = isLocComplete(loc.id);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className =
+        "w-full text-left p-4 rounded-2xl border shadow-sm transition " +
+        (done
+          ? "bg-emerald-50 border-emerald-300"
+          : unlocked
+            ? "bg-white border-emerald-200 hover:border-emerald-400"
+            : "bg-slate-50 border-slate-200");
+      if (unlocked) card.classList.add("rainbow-arrived");
+      const distText =
+        distance != null
+          ? "距離約 " + Math.round(distance) + " 米"
+          : "等待 GPS…";
+      const statusBadge = done
+        ? '<span class="badge-done">已完成</span>'
+        : unlocked
+          ? '<span class="badge-open">可進入</span>'
+          : '<span class="badge-lock">未到達</span>';
+      card.innerHTML =
+        '<div class="flex justify-between items-start gap-2">' +
+        '<div><h3 class="font-bold text-slate-800 text-base">' +
+        escapeHtml(loc.name) +
+        "</h3>" +
+        '<p class="text-xs text-slate-500 mt-1 line-clamp-2">' +
+        escapeHtml(loc.description || "") +
+        "</p></div>" +
+        statusBadge +
+        "</div>" +
+        '<div class="mt-3 flex justify-between items-center text-xs text-slate-500">' +
+        "<span><i class=\"fa-solid fa-location-dot mr-1\"></i>" +
+        distText +
+        (unlocked && !done ? " · 範圍內" : "") +
+        "</span>" +
+        '<span class="font-medium text-emerald-700"><i class="fa-solid fa-arrow-right"></i> 進入</span>' +
+        "</div>";
+      card.onclick = () => openLocation(loc.id);
+      container.appendChild(card);
+    });
+  }
+
+  async function openLocation(locId) {
+    const loc = locations.find((l) => l.id === locId);
+    if (!loc) return;
+    currentLocId = locId;
+    showView("view-location");
+    window.location.hash = "#/loc/" + locId;
+
+    document.getElementById("locPageTitle").textContent = loc.name;
+    document.getElementById("locPageDesc").textContent = loc.description || "";
+    const imgWrap = document.getElementById("locPageImages");
+    imgWrap.innerHTML = "";
+    (loc.images || []).forEach((url) => {
+      if (!url) return;
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = loc.name;
+      img.className = "rounded-xl w-full object-cover max-h-48 border border-slate-200";
+      imgWrap.appendChild(img);
+    });
+    if (!(loc.images || []).length) {
+      imgWrap.innerHTML =
+        '<div class="bg-slate-100 rounded-xl p-6 text-center text-slate-500 text-sm">' +
+        '<i class="fa-solid fa-map-location-dot text-2xl text-emerald-500 mb-2"></i>' +
+        "<p>請前往此地區；到達 GPS 範圍後會顯示問題。</p></div>";
+    }
+
+    const r = radius();
+    let unlocked = testMode;
+    let distance = null;
+    if (currentCoords) {
+      distance = GPS.calculateDistance(
+        currentCoords.lat,
+        currentCoords.lng,
+        loc.lat,
+        loc.lng
+      );
+      if (distance <= r) unlocked = true;
+    }
+
+    const lockBanner = document.getElementById("locLockBanner");
+    const qSection = document.getElementById("locQuestionsSection");
+    const infoCard = document.getElementById("locInfoCard");
+    if (unlocked) {
+      lockBanner.classList.add("hidden");
+      qSection.classList.remove("hidden");
+      if (infoCard) infoCard.classList.add("rainbow-arrived");
+      qSection.classList.add("rainbow-arrived");
+      renderQuestions(loc, isSubmissionLocked(loc.id));
+    } else {
+      lockBanner.classList.remove("hidden");
+      qSection.classList.add("hidden");
+      if (infoCard) infoCard.classList.remove("rainbow-arrived");
+      qSection.classList.remove("rainbow-arrived");
+      document.getElementById("locLockMsg").textContent =
+        distance != null
+          ? "尚未到達（約 " +
+            Math.round(distance) +
+            " 米，需在 " +
+            r +
+            " 米內）。請參考上方指引前往。"
+          : "正在等待 GPS…到達 " + r + " 米範圍後才會顯示問題。";
+    }
+    updateHeader();
+  }
