@@ -16,4 +16,9 @@
     loadText("js/teacher.p2b.txt" + v) +
     loadText("js/teacher.p3.txt" + v);
   (0, eval)(code);
+  try {
+    (0, eval)(loadText("js/completion-page.js" + v));
+  } catch (e) {
+    console.warn("completion-page.js load failed", e);
+  }
 })();
