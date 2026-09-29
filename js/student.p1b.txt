@@ -1,14 +1,8 @@
   function renderQuestions(loc, readOnly) {
     const container = document.getElementById("locQuestions");
     container.innerHTML = "";
-    if (!draftAnswers[loc.id] || !Object.keys(draftAnswers[loc.id]).length) {
-      const seeded = answersForLocation(loc.id);
-      if (seeded && Object.keys(seeded).length) {
-        draftAnswers[loc.id] = Object.assign({}, seeded);
-        saveDrafts();
-      }
-    }
-    const answers = draftAnswers[loc.id] || {};
+    // Prefer server locationAnswers; draft only fills gaps for unsubmitted fields
+    const answers = answersForLocation(loc.id);
     const lockedNote = document.getElementById("locLockedNote");
     if (lockedNote) {
       lockedNote.classList.toggle("hidden", !readOnly);
