@@ -1,6 +1,6 @@
-/* teacher.p2.txt — v20260929f
+/* teacher.p2.txt — v20260929g
  * Full source is split for size: js/teacher.p2a.txt + js/teacher.p2b.txt
- * teacher.js loads: p1 + p2a + p2b + p3 with ?v=20260929f
+ * teacher.js loads: p1 + p2a + p2b + p3 with ?v=20260929g
  * Critical symbols live in p2b: renderTeamDetail, monTrailMap, renderTrailMap, trailMapInstance
  * (p2a: moveLocation..nearestCheckpointInfo; p2b: buildTeamProgressHtml..trailMapInstance)
  * Trail map basemap: LandsD GeoInfo Map XYZ (basemap + label/hk/tc) — see teacher.p3.txt
