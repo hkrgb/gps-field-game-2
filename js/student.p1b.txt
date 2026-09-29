@@ -1,0 +1,101 @@
+
+  function renderQuestions(loc, readOnly) {
+    const container = document.getElementById("locQuestions");
+    container.innerHTML = "";
+    if (!draftAnswers[loc.id] || !Object.keys(draftAnswers[loc.id]).length) {
+      const seeded = answersForLocation(loc.id);
+      if (seeded && Object.keys(seeded).length) {
+        draftAnswers[loc.id] = Object.assign({}, seeded);
+        saveDrafts();
+      }
+    }
+    const answers = draftAnswers[loc.id] || {};
+    const lockedNote = document.getElementById("locLockedNote");
+    if (lockedNote) {
+      lockedNote.classList.toggle("hidden", !readOnly);
+    }
+    const submitBtn = document.getElementById("btnSubmitLoc");
+    if (submitBtn) {
+      if (readOnly) {
+        submitBtn.classList.add("hidden");
+      } else {
+        submitBtn.classList.remove("hidden");
+        const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
+        submitBtn.innerHTML = isUpdate
+          ? '<i class="fa-solid fa-rotate"></i> 更新此地區答案'
+          : '<i class="fa-solid fa-paper-plane"></i> 提交此地區答案';
+      }
+    }
+    (loc.questions || [])
+      .slice()
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .forEach((q, idx) => {
+        const box = document.createElement("div");
+        box.className = "bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2";
+        let html =
+          '<label class="block text-sm font-semibold text-slate-800">' +
+          (idx + 1) +
+          ". " +
+          escapeHtml(q.text) +
+          "</label>";
+        if (q.imageUrl) {
+          html +=
+            '<img src="' +
+            escapeAttr(q.imageUrl) +
+            '" class="rounded-lg max-h-40 w-full object-cover" alt="">';
+        }
+        const saved = answers[q.id] || "";
+        if (q.type === "mcq" && q.options && q.options.length) {
+          html += '<div class="space-y-1">';
+          q.options.forEach((opt) => {
+            const checked = saved === opt ? "checked" : "";
+            const dis = readOnly ? "disabled" : "";
+            html +=
+              '<label class="flex items-start gap-2 py-1.5 px-2 rounded-lg ' +
+              (readOnly ? "" : "hover:bg-white cursor-pointer ") +
+              'text-sm">' +
+              '<input type="radio" name="q_' +
+              escapeAttr(q.id) +
+              '" value="' +
+              escapeAttr(opt) +
+              '" class="mt-1" ' +
+              checked +
+              " " +
+              dis +
+              "> <span>" +
+              escapeHtml(opt) +
+              "</span></label>";
+          });
+          html += "</div>";
+        } else {
+          html +=
+            '<textarea data-qid="' +
+            escapeAttr(q.id) +
+            '" rows="2" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…" ' +
+            (readOnly ? "readonly" : "") +
+            ">" +
+            escapeHtml(saved) +
+            "</textarea>";
+        }
+        box.innerHTML = html;
+        container.appendChild(box);
+        if (readOnly) return;
+        box.querySelectorAll('input[type="radio"]').forEach((radio) => {
+          radio.onchange = () => {
+            if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
+            draftAnswers[loc.id][q.id] = radio.value;
+            saveDrafts();
+            renderProgressSquares();
+          };
+        });
+        const ta = box.querySelector("textarea");
+        if (ta) {
+          ta.oninput = () => {
+            if (!draftAnswers[loc.id]) draftAnswers[loc.id] = {};
+            draftAnswers[loc.id][q.id] = ta.value;
+            saveDrafts();
+            renderProgressSquares();
+          };
+        }
+      });
+  }
