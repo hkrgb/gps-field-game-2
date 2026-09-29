@@ -1,4 +1,3 @@
-
   function collectCurrentAnswers(loc) {
     const answers = Object.assign({}, draftAnswers[loc.id] || {});
     (loc.questions || []).forEach((q) => {
