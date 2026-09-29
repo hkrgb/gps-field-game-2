@@ -207,3 +207,58 @@ body.text-sm-mode #mainContainer {
   cursor: pointer;
   z-index: 1;
 }
+
+/* Site footer (細字) — fixed bottom, does not block content (pointer-events on children only) */
+.site-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  pointer-events: none;
+  padding: 0.35rem 0.75rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(248, 250, 252, 0.96), rgba(248, 250, 252, 0.85) 70%, transparent);
+}
+.site-footer-inner {
+  max-width: 28rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #64748b;
+  pointer-events: auto;
+}
+body:has(#mainContainer.teacher-wide) .site-footer-inner {
+  max-width: 56rem;
+}
+.site-footer-school {
+  color: #475569;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.site-footer-school:hover {
+  color: #047857;
+}
+.site-footer-sep {
+  color: #cbd5e1;
+  user-select: none;
+}
+.site-footer-disclaimer {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: #475569;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.site-footer-disclaimer:hover {
+  color: #047857;
+}
