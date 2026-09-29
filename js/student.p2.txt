@@ -1,0 +1,209 @@
+
+  function collectCurrentAnswers(loc) {
+    const answers = Object.assign({}, draftAnswers[loc.id] || {});
+    (loc.questions || []).forEach((q) => {
+      if (q.type === "mcq") {
+        const checked = document.querySelector(
+          'input[name="q_' + q.id + '"]:checked'
+        );
+        if (checked) answers[q.id] = checked.value;
+      } else {
+        const ta = document.querySelector('textarea[data-qid="' + q.id + '"]');
+        if (ta) answers[q.id] = ta.value;
+      }
+    });
+    draftAnswers[loc.id] = answers;
+    saveDrafts();
+    return answers;
+  }
+
+  async function submitCurrentLocation() {
+    const loc = locations.find((l) => l.id === currentLocId);
+    if (!loc) return;
+    teamSession = await DataStore.getTeamSession(project.id, session.teamId);
+    if (isSubmissionLocked(loc.id)) {
+      alert("此地區答案已提交並鎖定。請老師解鎖後才可再編輯。");
+      openLocation(loc.id);
+      return;
+    }
+    const answers = collectCurrentAnswers(loc);
+    const filled = (loc.questions || []).filter((q) =>
+      (answers[q.id] || "").toString().trim()
+    ).length;
+    if (!filled) {
+      alert("請至少回答一題再提交。");
+      return;
+    }
+    const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
+    if (
+      !confirm(
+        (isUpdate ? "確認更新「" : "確認提交「") +
+          loc.name +
+          "」的答案？（已填 " +
+          filled +
+          " / " +
+          (loc.questions || []).length +
+          " 題）" +
+          (isUpdate ? "\n更新後會再次鎖定。" : "")
+      )
+    ) {
+      return;
+    }
+    showLoading(true);
+    try {
+      await DataStore.submitAnswers(project.id, {
+        teamId: session.teamId,
+        teamName: session.teamName,
+        locationId: loc.id,
+        answers,
+        coords: currentCoords
+      });
+      teamSession = await DataStore.getTeamSession(project.id, session.teamId);
+      alert(isUpdate ? "已更新並重新鎖定。" : "已提交！進度已更新。");
+      showHub();
+    } catch (err) {
+      alert("提交失敗：" + (err.message || err));
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  function maybeReportTeamGps(coords, force) {
+    if (!session || !project || !coords) return;
+    const now = Date.now();
+    const minIntervalMs = 25000;
+    const minMoveMeters = 12;
+    let moved = true;
+    if (lastReportedCoords) {
+      const d = GPS.calculateDistance(
+        lastReportedCoords.lat,
+        lastReportedCoords.lng,
+        coords.lat,
+        coords.lng
+      );
+      moved = d >= minMoveMeters;
+    }
+    const elapsed = now - lastGpsReportAt;
+    if (!force && elapsed < minIntervalMs && !moved) return;
+    if (!force && elapsed < 8000) return;
+    lastGpsReportAt = now;
+    lastReportedCoords = { lat: coords.lat, lng: coords.lng };
+    DataStore.updateTeamGps(project.id, session.teamId, coords).catch(function (err) {
+      console.warn("updateTeamGps failed", err && err.message);
+    });
+  }
+
+  function onGpsUpdate(coords) {
+    currentCoords = coords;
+    const banner = document.getElementById("gpsBanner");
+    const icon = document.getElementById("gpsIcon");
+    const msg = document.getElementById("gpsMessage");
+    if (banner && msg && icon) {
+      msg.textContent =
+        "GPS 已更新（精度約 " +
+        Math.round(coords.accuracy || 0) +
+        " 米）";
+      icon.className = "fa-solid fa-circle-check text-emerald-600";
+    }
+    maybeReportTeamGps(coords, false);
+    if (currentLocId) openLocation(currentLocId);
+    else renderHubCards();
+  }
+
+  function startGpsWatch() {
+    if (gpsWatchStarted) return;
+    gpsWatchStarted = true;
+    GPS.watchPosition(
+      function (coords) {
+        onGpsUpdate(coords);
+      },
+      function () {
+        /* watch errors handled by refreshGPS banner */
+      }
+    );
+  }
+
+  /** Every 5 minutes force GPS read + server update (even if student forgets). */
+  function startGpsAutoInterval() {
+    if (gpsAutoTimer) return;
+    const FIVE_MIN = 5 * 60 * 1000;
+    gpsAutoTimer = setInterval(function () {
+      if (!session || !project) return;
+      refreshGPS();
+    }, FIVE_MIN);
+  }
+
+  async function refreshGPS() {
+    const banner = document.getElementById("gpsBanner");
+    const icon = document.getElementById("gpsIcon");
+    const msg = document.getElementById("gpsMessage");
+    if (!banner) return;
+    msg.textContent = "正在擷取 GPS…";
+    icon.className = "fa-solid fa-spinner fa-spin text-amber-600";
+    try {
+      currentCoords = await GPS.getCurrentPosition();
+      msg.textContent =
+        "GPS 已更新（精度約 " +
+        Math.round(currentCoords.accuracy || 0) +
+        " 米")";
+      icon.className = "fa-solid fa-circle-check text-emerald-600";
+      maybeReportTeamGps(currentCoords, true);
+    } catch (e) {
+      msg.textContent = "無法取得 GPS（請檢查定位權限；老師可於專案設定開啟測試模式）";
+      icon.className = "fa-solid fa-location-crosshairs text-rose-500";
+    }
+    startGpsWatch();
+    if (currentLocId) openLocation(currentLocId);
+    else renderHubCards();
+  }
+
+  function toggleTestMode() {
+    /* Header button removed — test mode is controlled by teacher project setting. */
+    syncTestModeFromProject();
+    if (currentLocId) openLocation(currentLocId);
+    else renderHubCards();
+  }
+
+  function applyProjectTestMode(proj) {
+    if (proj) project = proj;
+    syncTestModeFromProject();
+    if (currentLocId) openLocation(currentLocId);
+    else if (session) renderHubCards();
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&" + "amp;")
+      .replace(/</g, "&" + "lt;")
+      .replace(/>/g, "&" + "gt;")
+      .replace(/"/g, "&" + "quot;");
+  }
+
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/'/g, "&" + "#39;");
+  }
+
+  function showLoading(on) {
+    const el = document.getElementById("globalLoading");
+    if (el) el.classList.toggle("hidden", !on);
+  }
+
+  function getState() {
+    return { project, locations, session, currentCoords, testMode };
+  }
+
+  return {
+    start,
+    showHub,
+    openLocation,
+    submitCurrentLocation,
+    refreshGPS,
+    toggleTestMode,
+    applyProjectTestMode,
+    syncTestModeFromProject,
+    showView,
+    updateHeader,
+    getState,
+    showLoading
+  };
+})();
