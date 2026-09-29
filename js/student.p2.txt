@@ -145,7 +145,7 @@
       msg.textContent =
         "GPS 已更新（精度約 " +
         Math.round(currentCoords.accuracy || 0) +
-        " 米")";
+        " 米）";
       icon.className = "fa-solid fa-circle-check text-emerald-600";
       maybeReportTeamGps(currentCoords, true);
     } catch (e) {
