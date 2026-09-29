@@ -8,7 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="css/app.css?v=20260929a">
+  <link rel="stylesheet" href="css/app.css?v=20260929b">
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -30,6 +30,9 @@
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
         <span id="demoBadge" class="hidden text-[10px] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.5 rounded">DEMO</span>
+        <button id="btnCompletion" type="button" class="hidden bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1" title="查看完成頁">
+          <i class="fa-solid fa-flag-checkered"></i> 完成
+        </button>
         <button id="btnLogout" type="button" class="bg-white/15 hover:bg-white/25 text-xs px-2.5 py-1.5 rounded-lg">
           <i class="fa-solid fa-right-from-bracket"></i>
         </button>
@@ -138,6 +141,22 @@
       </div>
     </section>
 
+
+    <!-- ===== COMPLETION ===== -->
+    <section id="view-completion" class="hidden animate-fade-in space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-emerald-200 p-5 text-center space-y-3">
+        <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl">
+          <i class="fa-solid fa-trophy"></i>
+        </div>
+        <h2 class="text-xl font-bold text-slate-800">恭喜完成！</h2>
+        <p id="completionCongrats" class="text-sm text-slate-600">你們已完成所有考察問題。</p>
+        <div id="completionSummary" class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-left text-sm text-slate-700 space-y-1"></div>
+        <button id="btnCompletionBack" type="button" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
+          <i class="fa-solid fa-map-location-dot"></i> 返回任務地圖
+        </button>
+      </div>
+    </section>
+
     <!-- ===== TEACHER ===== -->
     <section id="view-teacher" class="hidden animate-fade-in space-y-4">
 
@@ -210,11 +229,16 @@
           </div>
 
           <div id="edPanel_teams" class="hidden space-y-3">
-            <div class="flex justify-between items-center">
+            <div class="flex justify-between items-center gap-2 flex-wrap">
               <h3 class="text-sm font-bold text-slate-700">隊伍帳號</h3>
-              <button id="btnAddTeam" type="button" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg">+ 新增隊伍</button>
+              <div class="flex gap-1.5 flex-wrap">
+                <button id="btnExportTeams" type="button" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200"><i class="fa-solid fa-download"></i> 匯出</button>
+                <button id="btnImportTeams" type="button" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200"><i class="fa-solid fa-upload"></i> 匯入</button>
+                <button id="btnAddTeam" type="button" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg">+ 新增隊伍</button>
+              </div>
             </div>
-            <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">MVP 以明文儲存密碼，僅適合校內封閉使用；正式環境請改雜湊（見 README）。</p>
+            <input id="importTeamsFile" type="file" accept="application/json,.json,text/plain" class="hidden">
+            <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">MVP 以明文儲存密碼，僅適合校內封閉使用；正式環境請改雜湊（見 README）。匯出 JSON 亦含明文密碼，請妥善保管。</p>
             <div id="edTeamList" class="space-y-2"></div>
           </div>
         </div>
@@ -295,13 +319,20 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="js/firebase-config.js"></script>
-  <script src="js/gps.js?v=20260929a"></script>
-  <script src="js/data.js?v=20260929a"></script>
+
+  <!-- Image lightbox -->
+  <div id="imgLightbox" class="img-lightbox hidden" role="dialog" aria-modal="true" aria-label="放大圖片">
+    <button type="button" id="imgLightboxClose" class="img-lightbox-close" aria-label="關閉"><i class="fa-solid fa-xmark"></i></button>
+    <img id="imgLightboxImg" src="" alt="放大圖片">
+  </div>
+
+  <script src="js/gps.js?v=20260929b"></script>
+  <script src="js/data.js?v=20260929b"></script>
   <script src="js/auth.js"></script>
-  <script src="js/student.js?v=20260929a"></script>
-  <script src="js/teacher.js?v=20260929a"></script>
+  <script src="js/student.js?v=20260929b"></script>
+  <script src="js/teacher.js?v=20260929b"></script>
   <script src="js/seed-kc-project.js"></script>
-  <script src="js/app.js?v=20260929a"></script>
+  <script src="js/app.js?v=20260929b"></script>
   <style>
     /* Make header stretch with teacher-wide main */
     #mainContainer.teacher-wide ~ * {}

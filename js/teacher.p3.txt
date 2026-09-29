@@ -1,3 +1,4 @@
+
   function destroyTrailMap() {
     if (trailMapInstance) {
       try {
@@ -411,6 +412,132 @@
     }
   }
 
+
+  async function exportTeamsJson() {
+    if (!currentProject) {
+      alert("請先開啟專案");
+      return;
+    }
+    const authed = await requireTeacherAuth("匯出隊伍");
+    if (!authed) return;
+    const list = teams.map(function (t) {
+      return {
+        id: t.id,
+        name: t.name,
+        password: t.password != null ? String(t.password) : ""
+      };
+    });
+    const payload = {
+      format: "gps-field-game-teams",
+      version: 1,
+      projectSlug: currentProject.slug || "",
+      projectTitle: currentProject.title || "",
+      exportedAt: new Date().toISOString(),
+      teams: list
+    };
+    const slug = (currentProject.slug || "project").replace(/[^\w\-]+/g, "_");
+    downloadJsonFile("teams-" + slug + ".json", payload);
+  }
+
+  function parseTeamsImport(raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      data = JSON.parse(raw);
+    }
+    let list = null;
+    if (Array.isArray(data)) list = data;
+    else if (data && Array.isArray(data.teams)) list = data.teams;
+    else throw new Error("JSON 格式不正確：需要 teams 陣列");
+    return list.map(function (t, i) {
+      if (!t || typeof t !== "object") {
+        throw new Error("第 " + (i + 1) + " 筆隊伍無效");
+      }
+      return {
+        id: t.id || null,
+        name: (t.name || "").trim() || "新隊伍",
+        password: t.password != null ? String(t.password) : ""
+      };
+    });
+  }
+
+  async function importTeamsJson(fileOrText) {
+    if (!currentProject) {
+      alert("請先開啟專案");
+      return;
+    }
+    const authed = await requireTeacherAuth("匯入隊伍");
+    if (!authed) return;
+    let text = "";
+    try {
+      if (typeof fileOrText === "string") {
+        text = fileOrText;
+      } else if (fileOrText && typeof fileOrText.text === "function") {
+        text = await fileOrText.text();
+      } else {
+        text = prompt("請貼上隊伍 JSON（或先選檔案）：", "") || "";
+      }
+      if (!text.trim()) return;
+      const incoming = parseTeamsImport(text);
+      if (!incoming.length) {
+        alert("檔案沒有隊伍資料");
+        return;
+      }
+      if (
+        !confirm(
+          "即將匯入 " +
+            incoming.length +
+            " 個隊伍（更新或新增）。確定繼續？\n（密碼以明文儲存，請確認來源可信。）"
+        )
+      ) {
+        return;
+      }
+      const doReplace = confirm(
+        "是否完整取代？\n確定＝刪除檔案中沒有的現有隊伍；取消＝僅更新／新增並保留其餘隊伍。"
+      );
+      StudentUI.showLoading(true);
+      try {
+        const kept = new Set();
+        for (let i = 0; i < incoming.length; i++) {
+          const t = incoming[i];
+          const saved = await withTimeout(
+            DataStore.upsertTeam(currentProject.id, t.id || null, {
+              name: t.name,
+              password: t.password
+            }),
+            20000,
+            "匯入隊伍"
+          );
+          kept.add(saved.id);
+        }
+        if (doReplace) {
+          for (let j = 0; j < teams.length; j++) {
+            const old = teams[j];
+            if (!kept.has(old.id)) {
+              await withTimeout(
+                DataStore.deleteTeam(currentProject.id, old.id),
+                15000,
+                "刪除舊隊伍"
+              );
+            }
+          }
+        }
+        teams = await withTimeout(
+          DataStore.listTeams(currentProject.id),
+          15000,
+          "重新載入隊伍"
+        );
+        renderTeamList();
+        alert("匯入完成（" + teams.length + " 個隊伍）");
+      } catch (e) {
+        alert(writeErrorMessage(e));
+      } finally {
+        StudentUI.showLoading(false);
+      }
+    } catch (e) {
+      alert("無法解析 JSON：" + (e && e.message ? e.message : e));
+    }
+  }
+
   function exportCSV() {
     const data = window._monExport;
     if (!data || !data.submissions.length) {
@@ -455,6 +582,8 @@
     exportCSV,
     exportLocationsJson,
     importLocationsJson,
+    exportTeamsJson,
+    importTeamsJson,
     clearProjectData,
     backToProjects,
     refreshProjects
