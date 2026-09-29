@@ -8,7 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="css/app.css?v=20260929b">
+  <link rel="stylesheet" href="css/app.css?v=20260929c">
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -145,11 +145,12 @@
     <!-- ===== COMPLETION ===== -->
     <section id="view-completion" class="hidden animate-fade-in space-y-4">
       <div class="bg-white rounded-2xl shadow-sm border border-emerald-200 p-5 text-center space-y-3">
-        <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl">
+        <div id="completionImages" class="space-y-2 text-left"></div>
+        <div id="completionTrophy" class="w-16 h-16 mx-auto rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl">
           <i class="fa-solid fa-trophy"></i>
         </div>
-        <h2 class="text-xl font-bold text-slate-800">恭喜完成！</h2>
-        <p id="completionCongrats" class="text-sm text-slate-600">你們已完成所有考察問題。</p>
+        <h2 id="completionTitle" class="text-xl font-bold text-slate-800">恭喜完成！</h2>
+        <p id="completionCongrats" class="text-sm text-slate-600 whitespace-pre-line">你們已完成所有考察問題。</p>
         <div id="completionSummary" class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-left text-sm text-slate-700 space-y-1"></div>
         <button id="btnCompletionBack" type="button" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
           <i class="fa-solid fa-map-location-dot"></i> 返回任務地圖
@@ -210,6 +211,26 @@
               <span class="font-semibold text-slate-700">測試模式（模擬 GPS／放寬距離）<span class="block font-normal text-[10px] text-slate-500 mt-0.5">開啟後隊伍無需到達現場即可解鎖問題</span></span>
               <input id="edTestMode" type="checkbox" class="w-4 h-4 accent-emerald-600 shrink-0">
             </label>
+            <div class="border-t border-slate-100 pt-3 space-y-2">
+              <h3 class="font-bold text-slate-800 text-sm flex items-center gap-1.5"><i class="fa-solid fa-trophy text-amber-500"></i> 完成頁</h3>
+              <p class="text-[10px] text-slate-500">學生完成所有問題後顯示的標題、文字與圖片。訊息可用 <code class="bg-slate-100 px-1 rounded">{teamName}</code> 代入隊伍名稱。</p>
+              <div>
+                <label class="font-semibold text-slate-700">標題</label>
+                <input id="edCompletionTitle" class="w-full mt-1 px-3 py-2 border rounded-lg" placeholder="恭喜完成！">
+              </div>
+              <div>
+                <label class="font-semibold text-slate-700">訊息（可多行）</label>
+                <textarea id="edCompletionMessage" rows="3" class="w-full mt-1 px-3 py-2 border rounded-lg" placeholder="「{teamName}」已完成所有考察問題，辛苦了！"></textarea>
+              </div>
+              <div>
+                <label class="font-semibold text-slate-700">圖片 URL（每行一個）</label>
+                <textarea id="edCompletionImages" rows="2" class="w-full mt-1 px-3 py-2 border rounded-lg" placeholder="https://…"></textarea>
+              </div>
+              <label class="flex items-center justify-between py-1 gap-3">
+                <span class="font-semibold text-slate-700">顯示完成統計<span class="block font-normal text-[10px] text-slate-500 mt-0.5">地區／題數摘要（預設顯示）</span></span>
+                <input id="edCompletionShowStats" type="checkbox" class="w-4 h-4 accent-emerald-600 shrink-0" checked>
+              </label>
+            </div>
             <button id="btnSaveSettings" type="button" class="w-full py-2.5 bg-emerald-600 text-white font-semibold rounded-xl">儲存設定</button>
             <button id="btnClearProjectDataEditor" type="button" class="w-full py-2.5 bg-rose-50 text-rose-700 border border-rose-200 font-semibold rounded-xl">清除資料（提交／進度／GPS）</button>
             <p class="text-[10px] text-slate-500">清除後保留地區、問題與隊伍帳號；刪除所有提交答案、完成進度與 GPS 軌跡。</p>
@@ -326,13 +347,14 @@
     <img id="imgLightboxImg" src="" alt="放大圖片">
   </div>
 
-  <script src="js/gps.js?v=20260929b"></script>
-  <script src="js/data.js?v=20260929b"></script>
+  <script src="js/gps.js?v=20260929c"></script>
+  <script src="js/data.js?v=20260929c"></script>
   <script src="js/auth.js"></script>
-  <script src="js/student.js?v=20260929b"></script>
-  <script src="js/teacher.js?v=20260929b"></script>
+  <script src="js/student.js?v=20260929c"></script>
+  <script src="js/teacher.js?v=20260929c"></script>
+  <script src="js/completion-page.js?v=20260929c"></script>
   <script src="js/seed-kc-project.js"></script>
-  <script src="js/app.js?v=20260929b"></script>
+  <script src="js/app.js?v=20260929c"></script>
   <style>
     /* Make header stretch with teacher-wide main */
     #mainContainer.teacher-wide ~ * {}
