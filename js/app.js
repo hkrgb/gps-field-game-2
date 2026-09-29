@@ -156,6 +156,37 @@
       StudentUI.submitCurrentLocation();
     });
 
+    const btnCompletion = document.getElementById("btnCompletion");
+    if (btnCompletion) {
+      btnCompletion.addEventListener("click", () => {
+        if (StudentUI.isAllComplete && StudentUI.isAllComplete()) {
+          StudentUI.showCompletion();
+        }
+      });
+    }
+    const btnCompletionBack = document.getElementById("btnCompletionBack");
+    if (btnCompletionBack) {
+      btnCompletionBack.addEventListener("click", () => {
+        StudentUI.showHub();
+      });
+    }
+
+    const lightbox = document.getElementById("imgLightbox");
+    const lightboxClose = document.getElementById("imgLightboxClose");
+    if (lightbox) {
+      lightbox.addEventListener("click", (e) => {
+        if (e.target === lightbox) StudentUI.closeLightbox();
+      });
+    }
+    if (lightboxClose) {
+      lightboxClose.addEventListener("click", () => {
+        StudentUI.closeLightbox();
+      });
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") StudentUI.closeLightbox();
+    });
+
     // Teacher buttons
     document.getElementById("btnNewProject").addEventListener("click", () => {
       TeacherUI.createNewProject();
@@ -197,6 +228,24 @@
       importLocsFile.addEventListener("change", () => {
         const file = importLocsFile.files && importLocsFile.files[0];
         if (file) TeacherUI.importLocationsJson(file);
+      });
+    }
+    const btnExportTeams = document.getElementById("btnExportTeams");
+    if (btnExportTeams) {
+      btnExportTeams.addEventListener("click", () => {
+        TeacherUI.exportTeamsJson();
+      });
+    }
+    const btnImportTeams = document.getElementById("btnImportTeams");
+    const importTeamsFile = document.getElementById("importTeamsFile");
+    if (btnImportTeams && importTeamsFile) {
+      btnImportTeams.addEventListener("click", () => {
+        importTeamsFile.value = "";
+        importTeamsFile.click();
+      });
+      importTeamsFile.addEventListener("change", () => {
+        const file = importTeamsFile.files && importTeamsFile.files[0];
+        if (file) TeacherUI.importTeamsJson(file);
       });
     }
     document.getElementById("btnAddTeam").addEventListener("click", () => {
@@ -246,7 +295,10 @@
     if (session.role === "team") {
       const m = hash.match(/^#\/loc\/(.+)$/);
       if (m) StudentUI.openLocation(m[1]);
-      else if (hash.indexOf("#/hub") === 0) StudentUI.showHub();
+      else if (hash.indexOf("#/complete") === 0) {
+        if (StudentUI.isAllComplete && StudentUI.isAllComplete()) StudentUI.showCompletion();
+        else StudentUI.showHub();
+      } else if (hash.indexOf("#/hub") === 0) StudentUI.showHub();
     }
   }
 
