@@ -44,6 +44,26 @@
     document.getElementById("lmImages").value = loc
       ? (loc.images || []).join("\n")
       : "";
+    const lmReq = document.getElementById("lmRequireGps");
+    if (lmReq) {
+      let req = true;
+      if (loc) {
+        if (typeof loc.requireGps === "boolean") {
+          req = loc.requireGps;
+        } else {
+          const qs = loc.questions || [];
+          if (
+            qs.length &&
+            qs.every(function (q) {
+              return q.requireGps === false;
+            })
+          ) {
+            req = false;
+          }
+        }
+      }
+      lmReq.value = req ? "true" : "false";
+    }
     const qList = document.getElementById("lmQuestions");
     qList.innerHTML = "";
     (loc && loc.questions ? loc.questions.slice().sort((a, b) => (a.order || 0) - (b.order || 0)) : []).forEach((q) =>
@@ -70,12 +90,11 @@
   }
 
   function addQuestionRow(q) {
-    q = q || { type: "text", text: "", options: [], imageUrl: "", requireGps: true };
+    q = q || { type: "text", text: "", options: [], imageUrl: "" };
     const list = document.getElementById("lmQuestions");
     const row = document.createElement("div");
     row.className = "border border-slate-200 rounded-lg p-2 space-y-1.5 bg-slate-50";
     const type = q.type === "mcq" || q.type === "mc" ? "mcq" : "text";
-    const requireGps = q.requireGps !== false;
     row.innerHTML =
       '<input type="hidden" class="q-id" value="' +
       esc(q.id || "") +
@@ -88,14 +107,6 @@
       '<option value="mcq"' +
       (type === "mcq" ? " selected" : "") +
       ">多項選擇</option>" +
-      "</select>" +
-      '<select class="q-require-gps text-xs border rounded px-2 py-1" title="是否須到達 GPS 才可作答">' +
-      '<option value="true"' +
-      (requireGps ? " selected" : "") +
-      ">須到達 GPS</option>" +
-      '<option value="false"' +
-      (!requireGps ? " selected" : "") +
-      ">不須到達</option>" +
       "</select>" +
       '<button type="button" class="text-xs bg-white border px-1.5 py-0.5 rounded q-up" title="上移">↑</button>' +
       '<button type="button" class="text-xs bg-white border px-1.5 py-0.5 rounded q-dn" title="下移">↓</button>' +
@@ -153,16 +164,12 @@
       let id = row.querySelector(".q-id").value;
       if (!id) id = DataStore.uid();
       const type = row.querySelector(".q-type").value;
-      const requireGpsSel = row.querySelector(".q-require-gps");
-      const requireGps =
-        !requireGpsSel || requireGpsSel.value !== "false";
       const q = {
         id,
         type,
         text,
         order: i + 1,
-        imageUrl: row.querySelector(".q-img").value.trim(),
-        requireGps: requireGps
+        imageUrl: row.querySelector(".q-img").value.trim()
       };
       if (type === "mcq") {
         q.options = row
@@ -173,6 +180,9 @@
       }
       questions.push(q);
     });
+    const lmReqEl = document.getElementById("lmRequireGps");
+    const requireGps =
+      !lmReqEl || lmReqEl.value !== "false";
     const images = document
       .getElementById("lmImages")
       .value.split("\n")
@@ -190,6 +200,7 @@
           lng: parseFloat(document.getElementById("lmLng").value) || 0,
           order: parseInt(document.getElementById("lmOrder").value, 10) || 1,
           images,
+          requireGps,
           questions
         }),
         15000,
