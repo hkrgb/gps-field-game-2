@@ -58,11 +58,16 @@
         coords: currentCoords
       });
       teamSession = await DataStore.getTeamSession(project.id, session.teamId);
+      lastSessionFetchAt = Date.now();
+      if (draftAnswers[loc.id]) {
+        delete draftAnswers[loc.id];
+        saveDrafts();
+      }
       alert(isUpdate ? "已更新並重新鎖定。" : "已提交！進度已更新。");
       if (!isUpdate && isAllComplete()) {
         showCompletion();
       } else {
-        showHub();
+        await showHub({ skipRefresh: true });
       }
     } catch (err) {
       alert("提交失敗：" + (err.message || err));
@@ -109,7 +114,7 @@
       icon.className = "fa-solid fa-circle-check text-emerald-600";
     }
     maybeReportTeamGps(coords, false);
-    if (currentLocId) openLocation(currentLocId);
+    if (currentLocId) openLocation(currentLocId, { skipRefresh: true });
     else renderHubCards();
   }
 
@@ -156,22 +161,23 @@
       icon.className = "fa-solid fa-location-crosshairs text-rose-500";
     }
     startGpsWatch();
-    if (currentLocId) openLocation(currentLocId);
+    if (currentLocId) openLocation(currentLocId, { skipRefresh: true });
     else renderHubCards();
   }
 
   function toggleTestMode() {
     /* Header button removed — test mode is controlled by teacher project setting. */
     syncTestModeFromProject();
-    if (currentLocId) openLocation(currentLocId);
+    if (currentLocId) openLocation(currentLocId, { skipRefresh: true });
     else renderHubCards();
   }
 
   function applyProjectTestMode(proj) {
     if (proj) project = proj;
     syncTestModeFromProject();
-    if (currentLocId) openLocation(currentLocId);
+    if (currentLocId) openLocation(currentLocId, { skipRefresh: true });
     else if (session) renderHubCards();
+    if (proj && window.SiteFooter && SiteFooter.refresh) SiteFooter.refresh(proj);
   }
 
   function escapeHtml(s) {
@@ -201,6 +207,7 @@
     openLocation,
     submitCurrentLocation,
     refreshGPS,
+    refreshTeamSessionFromServer,
     toggleTestMode,
     applyProjectTestMode,
     syncTestModeFromProject,
