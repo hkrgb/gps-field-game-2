@@ -60,7 +60,11 @@
       });
       teamSession = await DataStore.getTeamSession(project.id, session.teamId);
       alert(isUpdate ? "已更新並重新鎖定。" : "已提交！進度已更新。");
-      showHub();
+      if (!isUpdate && isAllComplete()) {
+        showCompletion();
+      } else {
+        showHub();
+      }
     } catch (err) {
       alert("提交失敗：" + (err.message || err));
     } finally {
@@ -202,6 +206,10 @@
     applyProjectTestMode,
     syncTestModeFromProject,
     showView,
+    showCompletion,
+    openLightbox,
+    closeLightbox,
+    isAllComplete,
     updateHeader,
     getState,
     showLoading
