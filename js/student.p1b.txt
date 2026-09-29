@@ -42,7 +42,7 @@
           html +=
             '<img src="' +
             escapeAttr(q.imageUrl) +
-            '" class="rounded-lg max-h-40 w-full object-cover" alt="">';
+            '" class="rounded-lg max-h-40 w-full object-cover img-zoomable" alt="" data-lightbox="1">';
         }
         const saved = answers[q.id] || "";
         if (q.type === "mcq" && q.options && q.options.length) {
@@ -79,6 +79,11 @@
         }
         box.innerHTML = html;
         container.appendChild(box);
+        box.querySelectorAll("img.img-zoomable").forEach(function (im) {
+          im.onclick = function () {
+            openLightbox(im.src, loc.name || "");
+          };
+        });
         if (readOnly) return;
         box.querySelectorAll('input[type="radio"]').forEach((radio) => {
           radio.onchange = () => {
