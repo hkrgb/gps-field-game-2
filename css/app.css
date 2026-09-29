@@ -118,3 +118,45 @@ body.text-sm-mode #mainContainer {
   width: 100%;
   font: inherit;
 }
+
+
+/* Rainbow animated border — arrived / unlocked location */
+@keyframes rainbow-border-shift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.rainbow-arrived {
+  position: relative;
+  z-index: 0;
+  border-color: transparent !important;
+}
+
+.rainbow-arrived::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  padding: 3px;
+  background: linear-gradient(
+    90deg,
+    #ef4444,
+    #f59e0b,
+    #eab308,
+    #22c55e,
+    #06b6d4,
+    #3b82f6,
+    #8b5cf6,
+    #ec4899,
+    #ef4444
+  );
+  background-size: 200% 100%;
+  animation: rainbow-border-shift 2.2s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: -1;
+}
