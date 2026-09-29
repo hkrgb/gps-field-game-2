@@ -13,9 +13,7 @@
     const sortedQs = (loc.questions || [])
       .slice()
       .sort((a, b) => (a.order || 0) - (b.order || 0));
-    const answerableCount = sortedQs.filter(function (q) {
-      return gpsUnlocked || !questionRequiresGps(q);
-    }).length;
+    const answerableCount = gpsUnlocked ? sortedQs.length : 0;
     const submitBtn = document.getElementById("btnSubmitLoc");
     if (submitBtn) {
       if (readOnly || !answerableCount) {
@@ -23,13 +21,9 @@
       } else {
         submitBtn.classList.remove("hidden");
         const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
-        const partialOnly = !gpsUnlocked && locationHasOptionalQuestions(loc);
         if (isUpdate) {
           submitBtn.innerHTML =
             '<i class="fa-solid fa-rotate"></i> 更新此地區答案';
-        } else if (partialOnly) {
-          submitBtn.innerHTML =
-            '<i class="fa-solid fa-paper-plane"></i> 提交可先答題目';
         } else {
           submitBtn.innerHTML =
             '<i class="fa-solid fa-paper-plane"></i> 提交此地區答案';
@@ -37,8 +31,7 @@
       }
     }
     sortedQs.forEach((q, idx) => {
-      const needsGps = questionRequiresGps(q);
-      const gpsLocked = needsGps && !gpsUnlocked;
+      const gpsLocked = !gpsUnlocked;
       const fieldReadOnly = readOnly || gpsLocked;
       const box = document.createElement("div");
       box.className = gpsLocked
@@ -48,9 +41,6 @@
       if (gpsLocked) {
         badge =
           ' <span class="inline-flex items-center gap-1 text-[10px] font-medium text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5 ml-1"><i class="fa-solid fa-lock"></i> 須到達 GPS</span>';
-      } else if (!needsGps) {
-        badge =
-          ' <span class="inline-flex items-center gap-1 text-[10px] font-medium text-sky-800 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5 ml-1">不須到達</span>';
       }
       let html =
         '<label class="block text-sm font-semibold text-slate-800">' +
