@@ -25,27 +25,60 @@
       openLocation(loc.id);
       return;
     }
-    const answers = collectCurrentAnswers(loc);
-    const filled = (loc.questions || []).filter((q) =>
-      (answers[q.id] || "").toString().trim()
-    ).length;
-    if (!filled) {
-      alert("請至少回答一題再提交。");
+    const gpsUnlocked = isLocationGpsUnlocked(loc) || !!testMode;
+    const collected = collectCurrentAnswers(loc);
+    const prev =
+      (teamSession &&
+        teamSession.locationAnswers &&
+        teamSession.locationAnswers[loc.id]) ||
+      {};
+    const merged = Object.assign({}, prev);
+    const answerable = (loc.questions || []).filter(function (q) {
+      return gpsUnlocked || !questionRequiresGps(q);
+    });
+    // Only write fields that are currently answerable (preserve GPS answers when locked)
+    answerable.forEach(function (q) {
+      if (collected[q.id] != null) merged[q.id] = collected[q.id];
+    });
+    const missing = answerable.filter(function (q) {
+      return !(merged[q.id] || "").toString().trim();
+    });
+    if (missing.length) {
+      alert(
+        "請先回答所有目前可作答的題目（尚欠 " +
+          missing.length +
+          " / " +
+          answerable.length +
+          " 題）。"
+      );
       return;
     }
+    const allQs = loc.questions || [];
+    const allFilled =
+      allQs.length > 0 &&
+      allQs.every(function (q) {
+        return (merged[q.id] || "").toString().trim();
+      });
+    const markComplete = allFilled;
+    const filledCount = allQs.filter(function (q) {
+      return (merged[q.id] || "").toString().trim();
+    }).length;
     const isUpdate = completedSet().has(loc.id) && isEditUnlocked(loc.id);
-    if (
-      !confirm(
-        (isUpdate ? "確認更新「" : "確認提交「") +
-          loc.name +
-          "」的答案？（已填 " +
-          filled +
-          " / " +
-          (loc.questions || []).length +
-          " 題）" +
-          (isUpdate ? "\n更新後會再次鎖定。" : "")
-      )
-    ) {
+    let confirmMsg =
+      (isUpdate ? "確認更新「" : "確認提交「") +
+      loc.name +
+      "」的答案？（已填 " +
+      filledCount +
+      " / " +
+      allQs.length +
+      " 題）";
+    if (isUpdate) {
+      confirmMsg += "\n更新後會再次鎖定。";
+    } else if (!markComplete) {
+      confirmMsg +=
+        "\n此為部分提交（尚有須到達 GPS 的題目未填）。到達後請再提交其餘題目；完成全部後才會標記此地區完成。";
+    }
+    if (!confirm(confirmMsg)) {
       return;
     }
     showLoading(true);
@@ -54,8 +87,9 @@
         teamId: session.teamId,
         teamName: session.teamName,
         locationId: loc.id,
-        answers,
-        coords: currentCoords
+        answers: merged,
+        coords: currentCoords,
+        markComplete: markComplete
       });
       teamSession = await DataStore.getTeamSession(project.id, session.teamId);
       lastSessionFetchAt = Date.now();
@@ -63,8 +97,14 @@
         delete draftAnswers[loc.id];
         saveDrafts();
       }
-      alert(isUpdate ? "已更新並重新鎖定。" : "已提交！進度已更新。");
-      if (!isUpdate && isAllComplete()) {
+      if (isUpdate) {
+        alert("已更新並重新鎖定。");
+      } else if (markComplete) {
+        alert("已提交！此地區已完成。");
+      } else {
+        alert("已儲存可先答題目。到達 GPS 範圍後請繼續回答其餘題目。");
+      }
+      if (!isUpdate && markComplete && isAllComplete()) {
         showCompletion();
       } else {
         await showHub({ skipRefresh: true });
