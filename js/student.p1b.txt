@@ -1,4 +1,3 @@
-
   function renderQuestions(loc, readOnly) {
     const container = document.getElementById("locQuestions");
     container.innerHTML = "";
@@ -104,3 +103,4 @@
         }
       });
   }
+
