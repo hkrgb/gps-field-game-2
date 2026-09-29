@@ -103,23 +103,29 @@
       const done = isLocComplete(loc.id);
       const card = document.createElement("button");
       card.type = "button";
+      const hasOptionalEarly = locationHasOptionalQuestions(loc);
       card.className =
         "w-full text-left p-4 rounded-2xl border shadow-sm transition " +
         (done
           ? "bg-emerald-50 border-emerald-300"
           : unlocked
             ? "bg-white border-emerald-200 hover:border-emerald-400"
-            : "bg-slate-50 border-slate-200");
+            : hasOptionalEarly
+              ? "bg-white border-amber-200 hover:border-amber-400"
+              : "bg-slate-50 border-slate-200");
       if (unlocked && !done) card.classList.add("rainbow-arrived");
       const distText =
         distance != null
           ? "距離約 " + Math.round(distance) + " 米"
           : "等待 GPS…";
+      const hasOptional = locationHasOptionalQuestions(loc);
       const statusBadge = done
         ? '<span class="badge-done">已完成</span>'
         : unlocked
           ? '<span class="badge-open">可進入</span>'
-          : '<span class="badge-lock">未到達</span>';
+          : hasOptional
+            ? '<span class="badge-open">可先答</span>'
+            : '<span class="badge-lock">未到達</span>';
       card.innerHTML =
         '<div class="flex justify-between items-start gap-2">' +
         '<div><h3 class="font-bold text-slate-800 text-base">' +
@@ -193,27 +199,57 @@
     const qSection = document.getElementById("locQuestionsSection");
     const infoCard = document.getElementById("locInfoCard");
     const done = isLocComplete(loc.id);
+    const hasOptional = locationHasOptionalQuestions(loc);
+    const hasGpsRequired = (loc.questions || []).some(questionRequiresGps);
+    const showQuestions = unlocked || hasOptional;
+
     if (unlocked) {
       lockBanner.classList.add("hidden");
-      qSection.classList.remove("hidden");
-      if (infoCard) {
-        infoCard.classList.toggle("rainbow-arrived", !done);
-      }
-      qSection.classList.toggle("rainbow-arrived", !done);
-      renderQuestions(loc, isSubmissionLocked(loc.id));
     } else {
       lockBanner.classList.remove("hidden");
-      qSection.classList.add("hidden");
-      if (infoCard) infoCard.classList.remove("rainbow-arrived");
-      qSection.classList.remove("rainbow-arrived");
-      document.getElementById("locLockMsg").textContent =
+      const lockTitle = lockBanner.querySelector("p.font-bold");
+      if (lockTitle) {
+        if (hasOptional && hasGpsRequired) {
+          lockTitle.innerHTML =
+            '<i class="fa-solid fa-lock"></i> 部分問題須到達後解鎖';
+        } else if (hasOptional) {
+          lockTitle.innerHTML =
+            '<i class="fa-solid fa-circle-info"></i> 可不須到達先作答';
+        } else {
+          lockTitle.innerHTML =
+            '<i class="fa-solid fa-lock"></i> 問題尚未解鎖';
+        }
+      }
+      let lockMsg =
         distance != null
           ? "尚未到達（約 " +
             Math.round(distance) +
             " 米，需在 " +
             r +
-            " 米內）。請參考上方指引前往。"
-          : "正在等待 GPS…到達 " + r + " 米範圍後才會顯示問題。";
+            " 米內）。"
+          : "正在等待 GPS…（需在 " + r + " 米範圍內）。";
+      if (hasOptional && hasGpsRequired) {
+        lockMsg +=
+          "「不須到達」題目可先作答；標示須到達的題目仍鎖定，到達後才可填寫。";
+      } else if (hasOptional) {
+        lockMsg += "此地區題目不須到達，可先作答提交。";
+      } else {
+        lockMsg += "請參考上方指引前往；到達後才會顯示問題。";
+      }
+      document.getElementById("locLockMsg").textContent = lockMsg;
+    }
+
+    if (showQuestions) {
+      qSection.classList.remove("hidden");
+      if (infoCard) {
+        infoCard.classList.toggle("rainbow-arrived", unlocked && !done);
+      }
+      qSection.classList.toggle("rainbow-arrived", unlocked && !done);
+      renderQuestions(loc, isSubmissionLocked(loc.id), unlocked);
+    } else {
+      qSection.classList.add("hidden");
+      if (infoCard) infoCard.classList.remove("rainbow-arrived");
+      qSection.classList.remove("rainbow-arrived");
     }
     updateHeader();
   }
