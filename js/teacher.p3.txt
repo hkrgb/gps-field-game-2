@@ -72,11 +72,22 @@
           .addTo(map);
       }
     }
+    const checkpointIcon = L.icon({
+      iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      iconRetinaUrl:
+        "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+      shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      iconSize: [12.5, 20.5],
+      iconAnchor: [6.25, 20.5],
+      popupAnchor: [1, -17],
+      shadowSize: [20.5, 20.5],
+      shadowAnchor: [6.25, 20.5]
+    });
     (locs || []).forEach(function (loc, i) {
       if (loc.lat == null || loc.lng == null) return;
       const ll = [Number(loc.lat), Number(loc.lng)];
       fitPts.push(ll);
-      L.marker(ll)
+      L.marker(ll, { icon: checkpointIcon })
         .bindPopup(
           "<strong>" + esc(loc.name) + "</strong><br>檢查點 " + (i + 1)
         )
@@ -252,6 +263,154 @@
     }
   }
 
+
+  function downloadJsonFile(filename, obj) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], {
+      type: "application/json;charset=utf-8"
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(function () {
+      try {
+        URL.revokeObjectURL(a.href);
+      } catch (e) {}
+    }, 1500);
+  }
+
+  async function exportLocationsJson() {
+    if (!currentProject) {
+      alert("請先開啟專案");
+      return;
+    }
+    const authed = await requireTeacherAuth("匯出地區");
+    if (!authed) return;
+    const locs = sortedLocations().map(function (loc) {
+      return {
+        id: loc.id,
+        name: loc.name,
+        lat: loc.lat,
+        lng: loc.lng,
+        description: loc.description || "",
+        order: loc.order || 1,
+        images: loc.images || [],
+        questions: loc.questions || []
+      };
+    });
+    const payload = {
+      format: "gps-field-game-locations",
+      version: 1,
+      projectSlug: currentProject.slug || "",
+      projectTitle: currentProject.title || "",
+      exportedAt: new Date().toISOString(),
+      locations: locs
+    };
+    const slug = (currentProject.slug || "project").replace(/[^\w\-]+/g, "_");
+    downloadJsonFile("locations-" + slug + ".json", payload);
+  }
+
+  function parseLocationsImport(raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      data = JSON.parse(raw);
+    }
+    let list = null;
+    if (Array.isArray(data)) list = data;
+    else if (data && Array.isArray(data.locations)) list = data.locations;
+    else throw new Error("JSON 格式不正確：需要 locations 陣列");
+    return list.map(function (loc, i) {
+      if (!loc || typeof loc !== "object") {
+        throw new Error("第 " + (i + 1) + " 筆地區無效");
+      }
+      return {
+        id: loc.id || null,
+        name: loc.name || "新地區",
+        lat: Number(loc.lat) || 0,
+        lng: Number(loc.lng) || 0,
+        description: loc.description || "",
+        order: loc.order != null ? Number(loc.order) : i + 1,
+        images: Array.isArray(loc.images) ? loc.images : [],
+        questions: Array.isArray(loc.questions) ? loc.questions : []
+      };
+    });
+  }
+
+  async function importLocationsJson(fileOrText) {
+    if (!currentProject) {
+      alert("請先開啟專案");
+      return;
+    }
+    const authed = await requireTeacherAuth("匯入地區");
+    if (!authed) return;
+    let text = "";
+    try {
+      if (typeof fileOrText === "string") {
+        text = fileOrText;
+      } else if (fileOrText && typeof fileOrText.text === "function") {
+        text = await fileOrText.text();
+      } else {
+        text = prompt("請貼上地區 JSON（或先選檔案）：", "") || "";
+      }
+      if (!text.trim()) return;
+      const incoming = parseLocationsImport(text);
+      if (!incoming.length) {
+        alert("檔案沒有地區資料");
+        return;
+      }
+      if (
+        !confirm(
+          "即將匯入 " +
+            incoming.length +
+            " 個地區／問題（更新或新增）。確定繼續？"
+        )
+      ) {
+        return;
+      }
+      const doReplace = confirm(
+        "是否完整取代？\n確定＝刪除檔案中沒有的現有地區；取消＝僅更新／新增並保留其餘地區。"
+      );
+      StudentUI.showLoading(true);
+      try {
+        const kept = new Set();
+        for (let i = 0; i < incoming.length; i++) {
+          const loc = incoming[i];
+          const saved = await withTimeout(
+            DataStore.upsertLocation(currentProject.id, loc.id || null, loc),
+            20000,
+            "匯入地區"
+          );
+          kept.add(saved.id);
+        }
+        if (doReplace) {
+          for (let j = 0; j < locations.length; j++) {
+            const old = locations[j];
+            if (!kept.has(old.id)) {
+              await withTimeout(
+                DataStore.deleteLocation(currentProject.id, old.id),
+                15000,
+                "刪除舊地區"
+              );
+            }
+          }
+        }
+        locations = await withTimeout(
+          DataStore.listLocations(currentProject.id),
+          15000,
+          "重新載入地區"
+        );
+        renderLocList();
+        alert("匯入完成（" + locations.length + " 個地區）");
+      } catch (e) {
+        alert(writeErrorMessage(e));
+      } finally {
+        StudentUI.showLoading(false);
+      }
+    } catch (e) {
+      alert("無法解析 JSON：" + (e && e.message ? e.message : e));
+    }
+  }
+
   function exportCSV() {
     const data = window._monExport;
     if (!data || !data.submissions.length) {
@@ -294,6 +453,8 @@
     addQuestionRow,
     addTeam,
     exportCSV,
+    exportLocationsJson,
+    importLocationsJson,
     clearProjectData,
     backToProjects,
     refreshProjects
