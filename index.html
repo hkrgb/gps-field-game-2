@@ -8,7 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="css/app.css?v=20260929c">
+  <link rel="stylesheet" href="css/app.css?v=20260929d">
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -269,63 +269,66 @@
         <div class="flex justify-between items-center gap-2 flex-wrap">
           <button id="btnBackProjects2" type="button" class="text-xs text-emerald-700 hover:underline"><i class="fa-solid fa-arrow-left"></i> 專案列表</button>
           <div class="flex gap-1.5 flex-wrap justify-end">
-            <button id="btnRefreshMonitor" type="button" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-rotate"></i> 重新整理</button>
-            <button id="btnExportCsv" type="button" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-file-csv"></i> 匯出 CSV</button>
-            <button id="btnClearProjectData" type="button" class="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fa-solid fa-trash-can"></i> 清除資料</button>
+            <button id="btnRefreshMonitor" type="button" class="text-xs bg-slate-200 px-2.5 py-1.5 rounded-lg"><i class="fa-solid fa-arrows-rotate"></i> 重新整理</button>
+            <button id="btnExportCsv" type="button" class="text-xs bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg"><i class="fa-solid fa-file-csv"></i> 匯出 CSV</button>
+            <button id="btnClearProjectDataMonitor" type="button" class="text-xs bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-1.5 rounded-lg"><i class="fa-solid fa-eraser"></i> 清除資料</button>
           </div>
         </div>
-        <h2 id="monTitle" class="font-bold text-slate-800">監察</h2>
-        <p class="text-[11px] text-slate-500">各隊伍完成進度與大約位置（相對最近檢查點）。點擊卡片可查看時間軸、地圖路徑、答題內容，並可解鎖再編輯。「清除資料」會刪除提交／進度／GPS 軌跡，保留地區與隊伍設定。</p>
-        <div id="monSessions" class="space-y-2"></div>
-        <div id="monTeamDetail" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3"></div>
-        <div id="monSubmissions" class="hidden"></div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <h2 id="monTitle" class="font-bold text-slate-800 mb-1">監察</h2>
+          <p class="text-[11px] text-slate-500 mb-3">各隊伍完成進度與大約位置（相對最近檢查點）。點擊卡片可查看時間軸、地圖路徑、答題內容，並可解鎖再編輯。「清除資料」會刪除提交／進度／GPS 軌跡，保留地區與隊伍設定。</p>
+          <div id="monitorList" class="space-y-3"></div>
+        </div>
       </div>
     </section>
   </main>
 
   <!-- Location edit modal -->
-  <div id="locModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
-      <div class="flex justify-between items-center border-b pb-2">
-        <h3 class="font-bold text-slate-800 text-sm" id="locModalTitle">編輯地區</h3>
-        <button id="btnCloseLocModal" type="button" class="text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+  <div id="locModal" class="hidden fixed inset-0 bg-slate-900/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 space-y-3">
+      <div class="flex justify-between items-center">
+        <h3 id="locModalTitle" class="font-bold text-slate-800">編輯地區</h3>
+        <button type="button" id="btnCloseLocModal" class="text-slate-400 text-xl"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <div class="space-y-3 text-xs">
+      <div class="space-y-2 text-xs">
         <div>
-          <label class="font-semibold text-slate-700">地區名稱</label>
+          <label class="font-semibold">地區名稱</label>
           <input id="lmName" class="w-full mt-1 px-3 py-2 border rounded-lg">
         </div>
         <div>
-          <label class="font-semibold text-slate-700">簡介／指引</label>
+          <label class="font-semibold">簡介／指引</label>
           <textarea id="lmDesc" rows="2" class="w-full mt-1 px-3 py-2 border rounded-lg"></textarea>
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="font-semibold text-slate-700">緯度 lat</label>
+            <label class="font-semibold">緯度 lat</label>
             <input id="lmLat" type="number" step="any" class="w-full mt-1 px-3 py-2 border rounded-lg">
           </div>
           <div>
-            <label class="font-semibold text-slate-700">經度 lng</label>
+            <label class="font-semibold">經度 lng</label>
             <input id="lmLng" type="number" step="any" class="w-full mt-1 px-3 py-2 border rounded-lg">
           </div>
         </div>
         <div>
-          <label class="font-semibold text-slate-700">排序編號 <span class="font-normal text-slate-400">（可選；列表↑↓會自動重編）</span></label>
+          <label class="font-semibold">排序編號</label>
           <input id="lmOrder" type="number" class="w-full mt-1 px-3 py-2 border rounded-lg">
+          <p class="text-[10px] text-slate-500 mt-0.5">（可選；列表↑↓會自動重編）</p>
         </div>
         <div>
-          <label class="font-semibold text-slate-700">指引圖片 URL（每行一個）</label>
-          <textarea id="lmImages" rows="2" class="w-full mt-1 px-3 py-2 border rounded-lg" placeholder="https://…"></textarea>
+          <label class="font-semibold">指引圖片 URL（每行一個）</label>
+          <textarea id="lmImages" rows="2" class="w-full mt-1 px-3 py-2 border rounded-lg"></textarea>
         </div>
         <div>
-          <label class="font-semibold text-slate-700 mb-1 block">問題列表</label>
-          <div id="lmQuestions" class="space-y-2"></div>
-          <button type="button" id="btnAddQuestion" class="mt-2 text-xs text-emerald-600 hover:underline">+ 新增問題</button>
+          <div class="flex justify-between items-center">
+            <label class="font-semibold">問題列表</label>
+            <button type="button" id="btnAddQuestion" class="text-xs text-emerald-700">+ 新增問題</button>
+          </div>
+          <div id="lmQuestions" class="mt-2 space-y-2"></div>
         </div>
       </div>
       <div class="flex gap-2 pt-2">
-        <button id="btnCancelLocModal" type="button" class="w-1/3 py-2 bg-slate-100 text-xs rounded-xl">取消</button>
-        <button id="btnSaveLocModal" type="button" class="w-2/3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl">儲存</button>
+        <button type="button" id="btnCancelLocModal" class="flex-1 py-2.5 bg-slate-100 rounded-xl text-sm font-semibold">取消</button>
+        <button type="button" id="btnSaveLocModal" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold">儲存</button>
       </div>
     </div>
   </div>
@@ -347,14 +350,15 @@
     <img id="imgLightboxImg" src="" alt="放大圖片">
   </div>
 
-  <script src="js/gps.js?v=20260929c"></script>
-  <script src="js/data.js?v=20260929c"></script>
+  <script src="js/gps.js?v=20260929d"></script>
+  <script src="js/data.js?v=20260929d"></script>
   <script src="js/auth.js"></script>
-  <script src="js/student.js?v=20260929c"></script>
-  <script src="js/teacher.js?v=20260929c"></script>
-  <script src="js/completion-page.js?v=20260929c"></script>
+  <script src="js/student.js?v=20260929d"></script>
+  <script src="js/teacher.js?v=20260929d"></script>
+  <script src="js/completion-page.js?v=20260929d"></script>
+  <script src="js/site-footer.js?v=20260929d"></script>
   <script src="js/seed-kc-project.js"></script>
-  <script src="js/app.js?v=20260929c"></script>
+  <script src="js/app.js?v=20260929d"></script>
   <style>
     /* Make header stretch with teacher-wide main */
     #mainContainer.teacher-wide ~ * {}
