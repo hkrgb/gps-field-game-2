@@ -11,9 +11,12 @@ window.StudentUI = (function () {
   let lastGpsReportAt = 0;
   let gpsWatchStarted = false;
   let gpsAutoTimer = null;
+  let sessionRefreshTimer = null;
+  let sessionRefreshBound = false;
+  let lastSessionFetchAt = 0;
   let testMode = false;
   let currentLocId = null;
-  let draftAnswers = {}; // locationId -> { qId: value }
+  let draftAnswers = {}; // locationId -> { qId: value } // unsubmitted only
 
   const DRAFT_PREFIX = "gpsgame2_draft_";
 
@@ -30,7 +33,136 @@ window.StudentUI = (function () {
   }
 
   function saveDrafts() {
-    localStorage.setItem(draftKey(), JSON.stringify(draftAnswers));
+    try {
+      localStorage.setItem(draftKey(), JSON.stringify(draftAnswers));
+    } catch (e) {
+      /* ignore quota */
+    }
+  }
+
+  function clearAllDrafts() {
+    draftAnswers = {};
+    try {
+      localStorage.removeItem(draftKey());
+    } catch (e) {}
+  }
+
+  function serverHasAnyLocationAnswers(sess) {
+    const map = (sess && sess.locationAnswers) || {};
+    const keys = Object.keys(map);
+    for (let i = 0; i < keys.length; i++) {
+      const ans = map[keys[i]];
+      if (ans && typeof ans === "object" && Object.keys(ans).length) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Firebase is source of truth for progress. localStorage drafts are only for
+   * unsubmitted answers. When teacher clears project data (empty completions +
+   * no locationAnswers), wipe this team's drafts so phones stop showing old work.
+   */
+  function reconcileDraftsWithServer(prevSession, nextSession) {
+    const nextIds = (nextSession && nextSession.completedLocationIds) || [];
+    const prevIds = (prevSession && prevSession.completedLocationIds) || [];
+    if (nextIds.length === 0 && !serverHasAnyLocationAnswers(nextSession)) {
+      clearAllDrafts();
+      return;
+    }
+    const nextSet = new Set(nextIds);
+    const unlocked = (nextSession && nextSession.unlockedEdits) || {};
+    let changed = false;
+    prevIds.forEach(function (id) {
+      if (!nextSet.has(id) && draftAnswers[id]) {
+        delete draftAnswers[id];
+        changed = true;
+      }
+    });
+    nextIds.forEach(function (id) {
+      if (!unlocked[id] && draftAnswers[id]) {
+        delete draftAnswers[id];
+        changed = true;
+      }
+    });
+    const locAns = (nextSession && nextSession.locationAnswers) || {};
+    Object.keys(draftAnswers).forEach(function (locId) {
+      if (nextSet.has(locId)) return;
+      const serverAns = locAns[locId];
+      if (!serverAns || !Object.keys(serverAns).length) {
+        return;
+      }
+    });
+    if (changed) saveDrafts();
+  }
+
+  async function refreshTeamSessionFromServer(opts) {
+    opts = opts || {};
+    if (!session || !project) return teamSession;
+    const now = Date.now();
+    const minGap = opts.force ? 0 : 4000;
+    if (!opts.force && lastSessionFetchAt && now - lastSessionFetchAt < minGap) {
+      return teamSession;
+    }
+    const prev = teamSession;
+    try {
+      const next = await DataStore.getTeamSession(project.id, session.teamId);
+      lastSessionFetchAt = Date.now();
+      teamSession = next || {
+        lastLoginAt: null,
+        completedLocationIds: [],
+        locationAnswers: {},
+        unlockedEdits: {}
+      };
+      reconcileDraftsWithServer(prev, teamSession);
+      if (opts.refreshUi !== false) {
+        applySessionUiRefresh();
+      }
+    } catch (e) {
+      console.warn("refreshTeamSessionFromServer failed", e && e.message);
+    }
+    return teamSession;
+  }
+
+  function applySessionUiRefresh() {
+    updateHeader();
+    const hub = document.getElementById("view-hub");
+    const locView = document.getElementById("view-location");
+    const comp = document.getElementById("view-completion");
+    if (comp && !comp.classList.contains("hidden") && !isAllComplete()) {
+      showHub({ skipRefresh: true });
+      return;
+    }
+    if (currentLocId && locView && !locView.classList.contains("hidden")) {
+      openLocation(currentLocId, { skipRefresh: true });
+      return;
+    }
+    if (hub && !hub.classList.contains("hidden")) {
+      renderHubCards();
+    }
+  }
+
+  function bindSessionRefreshListeners() {
+    if (sessionRefreshBound) return;
+    sessionRefreshBound = true;
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState !== "visible") return;
+      if (!session || !project) return;
+      refreshTeamSessionFromServer({ force: true });
+    });
+    window.addEventListener("focus", function () {
+      if (!session || !project) return;
+      refreshTeamSessionFromServer({ force: true });
+    });
+  }
+
+  function startSessionRefreshInterval() {
+    if (sessionRefreshTimer) return;
+    const INTERVAL = 45000;
+    sessionRefreshTimer = setInterval(function () {
+      if (!session || !project) return;
+      if (document.visibilityState === "hidden") return;
+      refreshTeamSessionFromServer({ force: true });
+    }, INTERVAL);
   }
 
   function applyFontSize() {
@@ -66,17 +198,32 @@ window.StudentUI = (function () {
       teamSession &&
       teamSession.locationAnswers &&
       teamSession.locationAnswers[locId];
-    if (fromSession && typeof fromSession === "object") return fromSession;
-    return draftAnswers[locId] || {};
+    const server =
+      fromSession && typeof fromSession === "object"
+        ? Object.assign({}, fromSession)
+        : null;
+    const draft = draftAnswers[locId] || {};
+    const completed = completedSet().has(locId);
+    const canEditDraft = !completed || isEditUnlocked(locId);
+    if (server && Object.keys(server).length) {
+      if (!canEditDraft) return server;
+      Object.keys(draft).forEach(function (qid) {
+        const sv = server[qid];
+        if (sv == null || String(sv).trim() === "") {
+          if (draft[qid] != null && String(draft[qid]).trim() !== "") {
+            server[qid] = draft[qid];
+          }
+        }
+      });
+      return server;
+    }
+    if (canEditDraft) return Object.assign({}, draft);
+    return {};
   }
 
-
+  /** Progress squares / hub cards: Firebase completedLocationIds only (never localStorage). */
   function isLocComplete(locId) {
-    if (completedSet().has(locId)) return true;
-    const loc = locations.find((l) => l.id === locId);
-    if (!loc || !(loc.questions || []).length) return false;
-    const answers = draftAnswers[locId] || {};
-    return (loc.questions || []).every((q) => (answers[q.id] || "").toString().trim());
+    return completedSet().has(locId);
   }
 
 
@@ -122,256 +269,86 @@ window.StudentUI = (function () {
     currentLocId = null;
     showView("view-completion");
     const name = (session && session.teamName) || "隊伍";
+    const p = project || {};
+    const images = (p.completionImages || []).filter(Boolean);
+    const imgWrap = document.getElementById("completionImages");
+    const trophy = document.getElementById("completionTrophy");
+    if (imgWrap) {
+      imgWrap.innerHTML = "";
+      images.forEach(function (url) {
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = p.completionTitle || "完成圖片";
+        img.className =
+          "rounded-xl w-full object-cover max-h-56 border border-slate-200 img-zoomable";
+        img.loading = "lazy";
+        img.onclick = function () {
+          openLightbox(url, p.completionTitle || "完成圖片");
+        };
+        imgWrap.appendChild(img);
+      });
+    }
+    if (trophy) {
+      trophy.classList.toggle("hidden", images.length > 0);
+    }
+    const titleEl = document.getElementById("completionTitle");
+    if (titleEl) {
+      titleEl.textContent =
+        (p.completionTitle && String(p.completionTitle).trim()) || "恭喜完成！";
+    }
     const congrats = document.getElementById("completionCongrats");
     if (congrats) {
-      congrats.textContent =
-        "「" + name + "」已完成所有考察問題，辛苦了！";
+      const rawMsg =
+        (p.completionMessage && String(p.completionMessage).trim()) ||
+        "「{teamName}」已完成所有考察問題，辛苦了！";
+      congrats.textContent = rawMsg.split("{teamName}").join(name);
     }
     const summary = document.getElementById("completionSummary");
+    const showStats = p.completionShowStats !== false;
     if (summary) {
-      const doneLocs = locations.filter(function (loc) {
-        return isLocComplete(loc.id);
-      }).length;
-      const totalQ = countQuestions();
-      let locLines = locations
-        .map(function (loc, i) {
-          const qs = (loc.questions || []).length;
-          const ok = isLocComplete(loc.id);
-          return (
-            '<div class="flex justify-between gap-2 py-0.5 border-b border-emerald-100/80 last:border-0">' +
-            "<span>" +
-            escapeHtml(loc.name || "地區 " + (i + 1)) +
-            '</span><span class="' +
-            (ok ? "text-emerald-700 font-semibold" : "text-slate-400") +
-            '">' +
-            (ok ? "已完成" : "未完成") +
-            (qs ? " · " + qs + " 題" : "") +
-            "</span></div>"
-          );
-        })
-        .join("");
-      summary.innerHTML =
-        '<p><span class="text-slate-500">隊伍：</span><strong>' +
-        escapeHtml(name) +
-        "</strong></p>" +
-        '<p><span class="text-slate-500">地區：</span><strong>' +
-        doneLocs +
-        " / " +
-        locations.length +
-        "</strong></p>" +
-        '<p><span class="text-slate-500">問題：</span><strong>' +
-        totalQ +
-        " 題</strong></p>" +
-        '<div class="mt-2">' +
-        locLines +
-        "</div>";
+      if (!showStats) {
+        summary.classList.add("hidden");
+        summary.innerHTML = "";
+      } else {
+        summary.classList.remove("hidden");
+        const doneLocs = locations.filter(function (loc) {
+          return isLocComplete(loc.id);
+        }).length;
+        const totalQ = countQuestions();
+        let locLines = locations
+          .map(function (loc, i) {
+            const qs = (loc.questions || []).length;
+            const ok = isLocComplete(loc.id);
+            return (
+              '<div class="flex justify-between gap-2 py-0.5 border-b border-emerald-100/80 last:border-0">' +
+              "<span>" +
+              escapeHtml(loc.name || "地區 " + (i + 1)) +
+              '</span><span class="' +
+              (ok ? "text-emerald-700 font-semibold" : "text-slate-400") +
+              '">' +
+              (ok ? "已完成" : "未完成") +
+              (qs ? " · " + qs + " 題" : "") +
+              "</span></div>"
+            );
+          })
+          .join("");
+        summary.innerHTML =
+          '<p><span class="text-slate-500">隊伍：</span><strong>' +
+          escapeHtml(name) +
+          "</strong></p>" +
+          '<p><span class="text-slate-500">地區：</span><strong>' +
+          doneLocs +
+          " / " +
+          locations.length +
+          "</strong></p>" +
+          '<p><span class="text-slate-500">問題：</span><strong>' +
+          totalQ +
+          " 題</strong></p>" +
+          '<div class="mt-2">' +
+          locLines +
+          "</div>";
+      }
     }
     updateHeader();
     window.location.hash = "#/complete";
-  }
-
-  function renderProgressSquares() {
-    const el = document.getElementById("progressSquares");
-    if (!el) return;
-    el.innerHTML = "";
-    locations.forEach((loc, i) => {
-      const done = isLocComplete(loc.id);
-      const sq = document.createElement("div");
-      sq.className =
-        "progress-square " + (done ? "filled" : "empty");
-      sq.title = loc.name + (done ? "（已完成）" : "（未完成）");
-      sq.textContent = String(i + 1);
-      el.appendChild(sq);
-    });
-  }
-
-  function syncTestModeFromProject() {
-    testMode = !!(project && project.showTestMode);
-  }
-
-  function updateHeader() {
-    const nameEl = document.getElementById("headerUserName");
-    if (nameEl) nameEl.textContent = session ? session.teamName : "";
-    renderProgressSquares();
-    const btn = document.getElementById("btnCompletion");
-    if (btn) {
-      const allDone = !!(session && isAllComplete());
-      btn.classList.toggle("hidden", !allDone);
-      btn.disabled = !allDone;
-    }
-  }
-
-  async function start(sess, proj) {
-    session = sess;
-    project = proj;
-    locations = await DataStore.listLocations(project.id);
-    teamSession = await DataStore.getTeamSession(project.id, session.teamId);
-    loadDrafts();
-    applyFontSize();
-    syncTestModeFromProject();
-    updateHeader();
-    showHub();
-    refreshGPS();
-    startGpsWatch();
-    startGpsAutoInterval();
-  }
-
-  function showView(id) {
-    ["view-landing", "view-hub", "view-location", "view-completion", "view-teacher"].forEach((v) => {
-      const el = document.getElementById(v);
-      if (el) el.classList.toggle("hidden", v !== id);
-    });
-    const header = document.getElementById("appHeader");
-    if (header) {
-      header.classList.toggle("hidden", id === "view-landing");
-    }
-    const maxW = document.getElementById("mainContainer");
-    if (maxW) {
-      maxW.classList.toggle("teacher-wide", id === "view-teacher");
-    }
-    const headerInner = document.getElementById("headerInner");
-    if (headerInner) {
-      headerInner.classList.toggle("max-w-md", id !== "view-teacher");
-      headerInner.classList.toggle("max-w-4xl", id === "view-teacher");
-    }
-  }
-
-  function showHub() {
-    currentLocId = null;
-    showView("view-hub");
-    document.getElementById("hubTitle").textContent = project.title || "考察任務";
-    document.getElementById("hubSubtitle").textContent = project.subtitle || "";
-    renderHubCards();
-    updateHeader();
-    window.location.hash = "#/hub";
-  }
-
-  function renderHubCards() {
-    const container = document.getElementById("hubCards");
-    container.innerHTML = "";
-    const r = radius();
-    locations.forEach((loc) => {
-      let distance = null;
-      let unlocked = testMode;
-      if (currentCoords) {
-        distance = GPS.calculateDistance(
-          currentCoords.lat,
-          currentCoords.lng,
-          loc.lat,
-          loc.lng
-        );
-        if (distance <= r) unlocked = true;
-      }
-      const done = isLocComplete(loc.id);
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className =
-        "w-full text-left p-4 rounded-2xl border shadow-sm transition " +
-        (done
-          ? "bg-emerald-50 border-emerald-300"
-          : unlocked
-            ? "bg-white border-emerald-200 hover:border-emerald-400"
-            : "bg-slate-50 border-slate-200");
-      if (unlocked && !done) card.classList.add("rainbow-arrived");
-      const distText =
-        distance != null
-          ? "距離約 " + Math.round(distance) + " 米"
-          : "等待 GPS…";
-      const statusBadge = done
-        ? '<span class="badge-done">已完成</span>'
-        : unlocked
-          ? '<span class="badge-open">可進入</span>'
-          : '<span class="badge-lock">未到達</span>';
-      card.innerHTML =
-        '<div class="flex justify-between items-start gap-2">' +
-        '<div><h3 class="font-bold text-slate-800 text-base">' +
-        escapeHtml(loc.name) +
-        "</h3>" +
-        '<p class="text-xs text-slate-500 mt-1 line-clamp-2">' +
-        escapeHtml(loc.description || "") +
-        "</p></div>" +
-        statusBadge +
-        "</div>" +
-        '<div class="mt-3 flex justify-between items-center text-xs text-slate-500">' +
-        "<span><i class=\"fa-solid fa-location-dot mr-1\"></i>" +
-        distText +
-        (unlocked && !done ? " · 範圍內" : "") +
-        "</span>" +
-        '<span class="font-medium text-emerald-700"><i class="fa-solid fa-arrow-right"></i> 進入</span>' +
-        "</div>";
-      card.onclick = () => openLocation(loc.id);
-      container.appendChild(card);
-    });
-  }
-
-  async function openLocation(locId) {
-    const loc = locations.find((l) => l.id === locId);
-    if (!loc) return;
-    currentLocId = locId;
-    showView("view-location");
-    window.location.hash = "#/loc/" + locId;
-
-    document.getElementById("locPageTitle").textContent = loc.name;
-    document.getElementById("locPageDesc").textContent = loc.description || "";
-    const imgWrap = document.getElementById("locPageImages");
-    imgWrap.innerHTML = "";
-    (loc.images || []).forEach((url) => {
-      if (!url) return;
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = loc.name;
-      img.className = "rounded-xl w-full object-cover max-h-48 border border-slate-200 img-zoomable";
-      img.loading = "lazy";
-      img.onclick = function () {
-        openLightbox(url, loc.name);
-      };
-      imgWrap.appendChild(img);
-    });
-    if (!(loc.images || []).length) {
-      imgWrap.innerHTML =
-        '<div class="bg-slate-100 rounded-xl p-6 text-center text-slate-500 text-sm">' +
-        '<i class="fa-solid fa-map-location-dot text-2xl text-emerald-500 mb-2"></i>' +
-        "<p>請前往此地區；到達 GPS 範圍後會顯示問題。</p></div>";
-    }
-
-    const r = radius();
-    let unlocked = testMode;
-    let distance = null;
-    if (currentCoords) {
-      distance = GPS.calculateDistance(
-        currentCoords.lat,
-        currentCoords.lng,
-        loc.lat,
-        loc.lng
-      );
-      if (distance <= r) unlocked = true;
-    }
-
-    const lockBanner = document.getElementById("locLockBanner");
-    const qSection = document.getElementById("locQuestionsSection");
-    const infoCard = document.getElementById("locInfoCard");
-    const done = isLocComplete(loc.id);
-    if (unlocked) {
-      lockBanner.classList.add("hidden");
-      qSection.classList.remove("hidden");
-      if (infoCard) {
-        infoCard.classList.toggle("rainbow-arrived", !done);
-      }
-      qSection.classList.toggle("rainbow-arrived", !done);
-      renderQuestions(loc, isSubmissionLocked(loc.id));
-    } else {
-      lockBanner.classList.remove("hidden");
-      qSection.classList.add("hidden");
-      if (infoCard) infoCard.classList.remove("rainbow-arrived");
-      qSection.classList.remove("rainbow-arrived");
-      document.getElementById("locLockMsg").textContent =
-        distance != null
-          ? "尚未到達（約 " +
-            Math.round(distance) +
-            " 米，需在 " +
-            r +
-            " 米內）。請參考上方指引前往。"
-          : "正在等待 GPS…到達 " + r + " 米範圍後才會顯示問題。";
-    }
-    updateHeader();
   }
