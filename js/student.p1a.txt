@@ -79,6 +79,97 @@ window.StudentUI = (function () {
     return (loc.questions || []).every((q) => (answers[q.id] || "").toString().trim());
   }
 
+
+  function countQuestions() {
+    let n = 0;
+    locations.forEach(function (loc) {
+      n += (loc.questions || []).length;
+    });
+    return n;
+  }
+
+  function isAllComplete() {
+    if (!locations.length) return false;
+    const done = completedSet();
+    let anyQ = false;
+    for (let i = 0; i < locations.length; i++) {
+      const loc = locations[i];
+      const qs = loc.questions || [];
+      if (!qs.length) continue;
+      anyQ = true;
+      if (!done.has(loc.id)) return false;
+    }
+    return anyQ;
+  }
+
+  function openLightbox(src, alt) {
+    const overlay = document.getElementById("imgLightbox");
+    const img = document.getElementById("imgLightboxImg");
+    if (!overlay || !img || !src) return;
+    img.src = src;
+    img.alt = alt || "放大圖片";
+    overlay.classList.remove("hidden");
+  }
+
+  function closeLightbox() {
+    const overlay = document.getElementById("imgLightbox");
+    const img = document.getElementById("imgLightboxImg");
+    if (overlay) overlay.classList.add("hidden");
+    if (img) img.src = "";
+  }
+
+  function showCompletion() {
+    currentLocId = null;
+    showView("view-completion");
+    const name = (session && session.teamName) || "隊伍";
+    const congrats = document.getElementById("completionCongrats");
+    if (congrats) {
+      congrats.textContent =
+        "「" + name + "」已完成所有考察問題，辛苦了！";
+    }
+    const summary = document.getElementById("completionSummary");
+    if (summary) {
+      const doneLocs = locations.filter(function (loc) {
+        return isLocComplete(loc.id);
+      }).length;
+      const totalQ = countQuestions();
+      let locLines = locations
+        .map(function (loc, i) {
+          const qs = (loc.questions || []).length;
+          const ok = isLocComplete(loc.id);
+          return (
+            '<div class="flex justify-between gap-2 py-0.5 border-b border-emerald-100/80 last:border-0">' +
+            "<span>" +
+            escapeHtml(loc.name || "地區 " + (i + 1)) +
+            '</span><span class="' +
+            (ok ? "text-emerald-700 font-semibold" : "text-slate-400") +
+            '">' +
+            (ok ? "已完成" : "未完成") +
+            (qs ? " · " + qs + " 題" : "") +
+            "</span></div>"
+          );
+        })
+        .join("");
+      summary.innerHTML =
+        '<p><span class="text-slate-500">隊伍：</span><strong>' +
+        escapeHtml(name) +
+        "</strong></p>" +
+        '<p><span class="text-slate-500">地區：</span><strong>' +
+        doneLocs +
+        " / " +
+        locations.length +
+        "</strong></p>" +
+        '<p><span class="text-slate-500">問題：</span><strong>' +
+        totalQ +
+        " 題</strong></p>" +
+        '<div class="mt-2">' +
+        locLines +
+        "</div>";
+    }
+    updateHeader();
+    window.location.hash = "#/complete";
+  }
+
   function renderProgressSquares() {
     const el = document.getElementById("progressSquares");
     if (!el) return;
@@ -102,6 +193,12 @@ window.StudentUI = (function () {
     const nameEl = document.getElementById("headerUserName");
     if (nameEl) nameEl.textContent = session ? session.teamName : "";
     renderProgressSquares();
+    const btn = document.getElementById("btnCompletion");
+    if (btn) {
+      const allDone = !!(session && isAllComplete());
+      btn.classList.toggle("hidden", !allDone);
+      btn.disabled = !allDone;
+    }
   }
 
   async function start(sess, proj) {
@@ -120,7 +217,7 @@ window.StudentUI = (function () {
   }
 
   function showView(id) {
-    ["view-landing", "view-hub", "view-location", "view-teacher"].forEach((v) => {
+    ["view-landing", "view-hub", "view-location", "view-completion", "view-teacher"].forEach((v) => {
       const el = document.getElementById(v);
       if (el) el.classList.toggle("hidden", v !== id);
     });
@@ -175,7 +272,7 @@ window.StudentUI = (function () {
           : unlocked
             ? "bg-white border-emerald-200 hover:border-emerald-400"
             : "bg-slate-50 border-slate-200");
-      if (unlocked) card.classList.add("rainbow-arrived");
+      if (unlocked && !done) card.classList.add("rainbow-arrived");
       const distText =
         distance != null
           ? "距離約 " + Math.round(distance) + " 米"
@@ -223,7 +320,11 @@ window.StudentUI = (function () {
       const img = document.createElement("img");
       img.src = url;
       img.alt = loc.name;
-      img.className = "rounded-xl w-full object-cover max-h-48 border border-slate-200";
+      img.className = "rounded-xl w-full object-cover max-h-48 border border-slate-200 img-zoomable";
+      img.loading = "lazy";
+      img.onclick = function () {
+        openLightbox(url, loc.name);
+      };
       imgWrap.appendChild(img);
     });
     if (!(loc.images || []).length) {
@@ -249,11 +350,14 @@ window.StudentUI = (function () {
     const lockBanner = document.getElementById("locLockBanner");
     const qSection = document.getElementById("locQuestionsSection");
     const infoCard = document.getElementById("locInfoCard");
+    const done = isLocComplete(loc.id);
     if (unlocked) {
       lockBanner.classList.add("hidden");
       qSection.classList.remove("hidden");
-      if (infoCard) infoCard.classList.add("rainbow-arrived");
-      qSection.classList.add("rainbow-arrived");
+      if (infoCard) {
+        infoCard.classList.toggle("rainbow-arrived", !done);
+      }
+      qSection.classList.toggle("rainbow-arrived", !done);
       renderQuestions(loc, isSubmissionLocked(loc.id));
     } else {
       lockBanner.classList.remove("hidden");
