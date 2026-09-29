@@ -231,19 +231,34 @@ window.StudentUI = (function () {
     return completedSet().has(locId);
   }
 
-  /** Default true（須到達）when missing — backward compatible. */
+  /**
+   * Per-LOCATION requireGps (default true = 須到達).
+   * Migration: if location.requireGps missing, infer false only when ALL
+   * questions have requireGps===false; otherwise true.
+   */
+  function locationRequiresGps(loc) {
+    if (!loc) return true;
+    if (typeof loc.requireGps === "boolean") return loc.requireGps;
+    const qs = loc.questions || [];
+    if (
+      qs.length &&
+      qs.every(function (q) {
+        return q && q.requireGps === false;
+      })
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  /** @deprecated kept for older call sites — now location-level. */
   function questionRequiresGps(q) {
     return !q || q.requireGps !== false;
   }
 
-  function locationHasOptionalQuestions(loc) {
-    return (loc.questions || []).some(function (q) {
-      return !questionRequiresGps(q);
-    });
-  }
-
   function isLocationGpsUnlocked(loc) {
     if (testMode) return true;
+    if (!locationRequiresGps(loc)) return true;
     if (!currentCoords || !loc) return false;
     const r = radius();
     const distance = GPS.calculateDistance(
