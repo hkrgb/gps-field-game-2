@@ -1,0 +1,44 @@
+  function applySessionUiRefresh() {
+    const hub = document.getElementById("view-hub");
+    const locView = document.getElementById("view-location");
+    const comp = document.getElementById("view-completion");
+    if (comp && !comp.classList.contains("hidden") && !isAllComplete()) {
+      showHub({ skipRefresh: true });
+      return;
+    }
+    if (currentLocId && locView && !locView.classList.contains("hidden")) {
+      // Soft refresh: never wipe textareas while student is typing (iOS).
+      softRefreshLocationUi();
+      return;
+    }
+    updateHeader();
+    if (hub && !hub.classList.contains("hidden")) {
+      renderHubCards();
+    }
+  }
+
+  function bindSessionRefreshListeners() {
+    if (sessionRefreshBound) return;
+    sessionRefreshBound = true;
+    // visibilitychange only — do NOT listen to window "focus":
+    // on iOS Safari, focusing a textarea can fire window focus and was
+    // re-fetching session → openLocation → destroying the textarea mid-type.
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState !== "visible") return;
+      if (!session || !project) return;
+      if (isAnswerFieldFocused()) return;
+      refreshTeamSessionFromServer({ force: true });
+    });
+  }
+
+  function startSessionRefreshInterval() {
+    if (sessionRefreshTimer) return;
+    const INTERVAL = 45000;
+    sessionRefreshTimer = setInterval(function () {
+      if (!session || !project) return;
+      if (document.visibilityState === "hidden") return;
+      if (isAnswerFieldFocused()) return;
+      refreshTeamSessionFromServer({ force: true });
+    }, INTERVAL);
+  }
+
