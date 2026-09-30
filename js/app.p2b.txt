@@ -1,0 +1,174 @@
+  function bindGlobal() {
+    document.getElementById("btnHome").addEventListener("click", async () => {
+      const session = Auth.getSession();
+      if (session && session.role === "team") StudentUI.showHub();
+      else if (session && session.role === "teacher") TeacherUI.backToProjects();
+      else showLanding();
+    });
+
+    document.getElementById("btnLogout").addEventListener("click", async () => {
+      if (!confirm("確定登出？")) return;
+      await Auth.logout();
+      showLanding();
+    });
+
+    document.getElementById("btnRefreshGps").addEventListener("click", () => {
+      StudentUI.refreshGPS();
+    });
+
+    document.getElementById("btnBackHub").addEventListener("click", () => {
+      StudentUI.showHub();
+    });
+
+    document.getElementById("btnSubmitLoc").addEventListener("click", () => {
+      StudentUI.submitCurrentLocation();
+    });
+
+    const btnCompletion = document.getElementById("btnCompletion");
+    if (btnCompletion) {
+      btnCompletion.addEventListener("click", () => {
+        if (StudentUI.isAllComplete && StudentUI.isAllComplete()) {
+          StudentUI.showCompletion();
+        }
+      });
+    }
+    const btnCompletionBack = document.getElementById("btnCompletionBack");
+    if (btnCompletionBack) {
+      btnCompletionBack.addEventListener("click", () => {
+        StudentUI.showHub();
+      });
+    }
+
+    const lightbox = document.getElementById("imgLightbox");
+    const lightboxClose = document.getElementById("imgLightboxClose");
+    if (lightbox) {
+      lightbox.addEventListener("click", (e) => {
+        if (e.target === lightbox) StudentUI.closeLightbox();
+      });
+    }
+    if (lightboxClose) {
+      lightboxClose.addEventListener("click", () => {
+        StudentUI.closeLightbox();
+      });
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") StudentUI.closeLightbox();
+    });
+
+    // Teacher buttons
+    document.getElementById("btnNewProject").addEventListener("click", () => {
+      TeacherUI.createNewProject();
+    });
+    document.getElementById("btnSaveSettings").addEventListener("click", () => {
+      TeacherUI.saveSettings();
+    });
+    document.getElementById("btnBackProjects").addEventListener("click", () => {
+      TeacherUI.backToProjects();
+    });
+    document.getElementById("btnBackProjects2").addEventListener("click", () => {
+      TeacherUI.backToProjects();
+    });
+    document.getElementById("edTab_settings").addEventListener("click", () => {
+      TeacherUI.switchEditorTab("settings");
+    });
+    document.getElementById("edTab_locations").addEventListener("click", () => {
+      TeacherUI.switchEditorTab("locations");
+    });
+    document.getElementById("edTab_teams").addEventListener("click", () => {
+      TeacherUI.switchEditorTab("teams");
+    });
+    document.getElementById("btnAddLoc").addEventListener("click", () => {
+      TeacherUI.openLocModal(null);
+    });
+    const btnExportLocs = document.getElementById("btnExportLocs");
+    if (btnExportLocs) {
+      btnExportLocs.addEventListener("click", () => {
+        TeacherUI.exportLocationsJson();
+      });
+    }
+    const btnImportLocs = document.getElementById("btnImportLocs");
+    const importLocsFile = document.getElementById("importLocsFile");
+    if (btnImportLocs && importLocsFile) {
+      btnImportLocs.addEventListener("click", () => {
+        importLocsFile.value = "";
+        importLocsFile.click();
+      });
+      importLocsFile.addEventListener("change", () => {
+        const file = importLocsFile.files && importLocsFile.files[0];
+        if (file) TeacherUI.importLocationsJson(file);
+      });
+    }
+    const btnExportTeams = document.getElementById("btnExportTeams");
+    if (btnExportTeams) {
+      btnExportTeams.addEventListener("click", () => {
+        TeacherUI.exportTeamsJson();
+      });
+    }
+    const btnImportTeams = document.getElementById("btnImportTeams");
+    const importTeamsFile = document.getElementById("importTeamsFile");
+    if (btnImportTeams && importTeamsFile) {
+      btnImportTeams.addEventListener("click", () => {
+        importTeamsFile.value = "";
+        importTeamsFile.click();
+      });
+      importTeamsFile.addEventListener("change", () => {
+        const file = importTeamsFile.files && importTeamsFile.files[0];
+        if (file) TeacherUI.importTeamsJson(file);
+      });
+    }
+    document.getElementById("btnAddTeam").addEventListener("click", () => {
+      TeacherUI.addTeam();
+    });
+    document.getElementById("btnAddQuestion").addEventListener("click", () => {
+      TeacherUI.addQuestionRow();
+    });
+    document.getElementById("btnCloseLocModal").addEventListener("click", () => {
+      TeacherUI.closeLocModal();
+    });
+    document.getElementById("btnCancelLocModal").addEventListener("click", () => {
+      TeacherUI.saveLocModal();
+    });
+    document.getElementById("btnSaveLocModal").addEventListener("click", () => {
+      TeacherUI.saveLocModal();
+    });
+    document.getElementById("btnExportCsv").addEventListener("click", () => {
+      TeacherUI.exportCSV();
+    });
+    const btnRefreshMon = document.getElementById("btnRefreshMonitor");
+    if (btnRefreshMon) {
+      btnRefreshMon.addEventListener("click", () => {
+        TeacherUI.refreshMonitor();
+      });
+    }
+    const btnClear = document.getElementById("btnClearProjectData");
+    if (btnClear) {
+      btnClear.addEventListener("click", () => {
+        TeacherUI.clearProjectData();
+      });
+    }
+    const btnClearEd = document.getElementById("btnClearProjectDataEditor");
+    if (btnClearEd) {
+      btnClearEd.addEventListener("click", () => {
+        TeacherUI.clearProjectData();
+      });
+    }
+
+    window.addEventListener("hashchange", routeFromHash);
+  }
+
+  function routeFromHash() {
+    const session = Auth.getSession();
+    if (!session) return;
+    const hash = window.location.hash || "";
+    if (session.role === "team") {
+      const m = hash.match(/^#\/loc\/(.+)$/);
+      if (m) StudentUI.openLocation(m[1]);
+      else if (hash.indexOf("#/complete") === 0) {
+        if (StudentUI.isAllComplete && StudentUI.isAllComplete()) StudentUI.showCompletion();
+        else StudentUI.showHub();
+      } else if (hash.indexOf("#/hub") === 0) StudentUI.showHub();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", boot);
+})();
