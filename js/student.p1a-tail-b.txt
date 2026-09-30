@@ -1,0 +1,230 @@
+  function applyFontSize() {
+    const size = (project && project.fontSize) || "base";
+    document.documentElement.style.setProperty(
+      "--app-font-scale",
+      size === "lg" ? "1.125" : size === "sm" ? "0.9" : "1"
+    );
+    document.body.classList.toggle("text-lg-mode", size === "lg");
+    document.body.classList.toggle("text-sm-mode", size === "sm");
+  }
+
+  function radius() {
+    return (project && project.gpsRadiusMeters) || 50;
+  }
+
+  function completedSet() {
+    return new Set((teamSession && teamSession.completedLocationIds) || []);
+  }
+
+  function isEditUnlocked(locId) {
+    const map = (teamSession && teamSession.unlockedEdits) || {};
+    return !!map[locId];
+  }
+
+  function isSubmissionLocked(locId) {
+    if (!completedSet().has(locId)) return false;
+    return !isEditUnlocked(locId);
+  }
+
+  function answersForLocation(locId) {
+    const fromSession =
+      teamSession &&
+      teamSession.locationAnswers &&
+      teamSession.locationAnswers[locId];
+    const server =
+      fromSession && typeof fromSession === "object"
+        ? Object.assign({}, fromSession)
+        : null;
+    const draft = draftAnswers[locId] || {};
+    const completed = completedSet().has(locId);
+    const canEditDraft = !completed || isEditUnlocked(locId);
+    if (server && Object.keys(server).length) {
+      if (!canEditDraft) return server;
+      // Prefer server submission; draft only fills unanswered gaps
+      Object.keys(draft).forEach(function (qid) {
+        const sv = server[qid];
+        if (sv == null || String(sv).trim() === "") {
+          if (draft[qid] != null && String(draft[qid]).trim() !== "") {
+            server[qid] = draft[qid];
+          }
+        }
+      });
+      return server;
+    }
+    if (canEditDraft) return Object.assign({}, draft);
+    return {};
+  }
+
+  /** Progress squares / hub cards: Firebase completedLocationIds only (never localStorage). */
+  function isLocComplete(locId) {
+    return completedSet().has(locId);
+  }
+
+  /**
+   * Per-LOCATION requireGps (default true = 須到達).
+   * Migration: if location.requireGps missing, infer false only when ALL
+   * questions have requireGps===false; otherwise true.
+   */
+  function locationRequiresGps(loc) {
+    if (!loc) return true;
+    if (typeof loc.requireGps === "boolean") return loc.requireGps;
+    const qs = loc.questions || [];
+    if (
+      qs.length &&
+      qs.every(function (q) {
+        return q && q.requireGps === false;
+      })
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  /** @deprecated kept for older call sites — now location-level. */
+  function questionRequiresGps(q) {
+    return !q || q.requireGps !== false;
+  }
+
+  function isLocationGpsUnlocked(loc) {
+    if (testMode) return true;
+    if (!locationRequiresGps(loc)) return true;
+    if (!currentCoords || !loc) return false;
+    const r = radius();
+    const distance = GPS.calculateDistance(
+      currentCoords.lat,
+      currentCoords.lng,
+      loc.lat,
+      loc.lng
+    );
+    return distance <= r;
+  }
+
+  function countQuestions() {
+    let n = 0;
+    locations.forEach(function (loc) {
+      n += (loc.questions || []).length;
+    });
+    return n;
+  }
+
+  function isAllComplete() {
+    if (!locations.length) return false;
+    const done = completedSet();
+    // Every location that has questions must be submitted/completed
+    let anyQ = false;
+    for (let i = 0; i < locations.length; i++) {
+      const loc = locations[i];
+      const qs = loc.questions || [];
+      if (!qs.length) continue;
+      anyQ = true;
+      if (!done.has(loc.id)) return false;
+    }
+    // If no questions at all, not "complete" in celebration sense
+    return anyQ;
+  }
+
+  function openLightbox(src, alt) {
+    const overlay = document.getElementById("imgLightbox");
+    const img = document.getElementById("imgLightboxImg");
+    if (!overlay || !img || !src) return;
+    img.src = src;
+    img.alt = alt || "放大圖片";
+    overlay.classList.remove("hidden");
+  }
+
+  function closeLightbox() {
+    const overlay = document.getElementById("imgLightbox");
+    const img = document.getElementById("imgLightboxImg");
+    if (overlay) overlay.classList.add("hidden");
+    if (img) img.src = "";
+  }
+
+  function showCompletion() {
+    currentLocId = null;
+    showView("view-completion");
+    const name = (session && session.teamName) || "隊伍";
+    const p = project || {};
+    const images = (p.completionImages || []).filter(Boolean);
+    const imgWrap = document.getElementById("completionImages");
+    const trophy = document.getElementById("completionTrophy");
+    if (imgWrap) {
+      imgWrap.innerHTML = "";
+      images.forEach(function (url) {
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = p.completionTitle || "完成圖片";
+        img.className =
+          "rounded-xl w-full object-cover max-h-56 border border-slate-200 img-zoomable";
+        img.loading = "lazy";
+        img.onclick = function () {
+          openLightbox(url, p.completionTitle || "完成圖片");
+        };
+        imgWrap.appendChild(img);
+      });
+    }
+    if (trophy) {
+      // Keep trophy when no custom images; still show with images (title stays)
+      trophy.classList.toggle("hidden", images.length > 0);
+    }
+    const titleEl = document.getElementById("completionTitle");
+    if (titleEl) {
+      titleEl.textContent =
+        (p.completionTitle && String(p.completionTitle).trim()) || "恭喜完成！";
+    }
+    const congrats = document.getElementById("completionCongrats");
+    if (congrats) {
+      const rawMsg =
+        (p.completionMessage && String(p.completionMessage).trim()) ||
+        "「{teamName}」已完成所有考察問題，辛苦了！";
+      congrats.textContent = rawMsg.split("{teamName}").join(name);
+    }
+    const summary = document.getElementById("completionSummary");
+    const showStats = p.completionShowStats !== false;
+    if (summary) {
+      if (!showStats) {
+        summary.classList.add("hidden");
+        summary.innerHTML = "";
+      } else {
+        summary.classList.remove("hidden");
+        const doneLocs = locations.filter(function (loc) {
+          return isLocComplete(loc.id);
+        }).length;
+        const totalQ = countQuestions();
+        let locLines = locations
+          .map(function (loc, i) {
+            const qs = (loc.questions || []).length;
+            const ok = isLocComplete(loc.id);
+            return (
+              '<div class="flex justify-between gap-2 py-0.5 border-b border-emerald-100/80 last:border-0">' +
+              "<span>" +
+              escapeHtml(loc.name || "地區 " + (i + 1)) +
+              '</span><span class="' +
+              (ok ? "text-emerald-700 font-semibold" : "text-slate-400") +
+              '">' +
+              (ok ? "已完成" : "未完成") +
+              (qs ? " · " + qs + " 題" : "") +
+              "</span></div>"
+            );
+          })
+          .join("");
+        summary.innerHTML =
+          '<p><span class="text-slate-500">隊伍：</span><strong>' +
+          escapeHtml(name) +
+          "</strong></p>" +
+          '<p><span class="text-slate-500">地區：</span><strong>' +
+          doneLocs +
+          " / " +
+          locations.length +
+          "</strong></p>" +
+          '<p><span class="text-slate-500">問題：</span><strong>' +
+          totalQ +
+          " 題</strong></p>" +
+          '<div class="mt-2">' +
+          locLines +
+          "</div>";
+      }
+    }
+    updateHeader();
+    window.location.hash = "#/complete";
+  }
+
