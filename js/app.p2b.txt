@@ -126,7 +126,7 @@
       TeacherUI.closeLocModal();
     });
     document.getElementById("btnCancelLocModal").addEventListener("click", () => {
-      TeacherUI.saveLocModal();
+      TeacherUI.closeLocModal();
     });
     document.getElementById("btnSaveLocModal").addEventListener("click", () => {
       TeacherUI.saveLocModal();
