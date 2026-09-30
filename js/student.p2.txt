@@ -144,7 +144,7 @@
       icon.className = "fa-solid fa-circle-check text-emerald-600";
     }
     maybeReportTeamGps(coords, false);
-    if (currentLocId) openLocation(currentLocId, { skipRefresh: true });
+    if (currentLocId) softRefreshLocationUi();
     else renderHubCards();
   }
 
@@ -191,7 +191,7 @@
       icon.className = "fa-solid fa-location-crosshairs text-rose-500";
     }
     startGpsWatch();
-    if (currentLocId) openLocation(currentLocId, { skipRefresh: true });
+    if (currentLocId) softRefreshLocationUi();
     else renderHubCards();
   }
 
