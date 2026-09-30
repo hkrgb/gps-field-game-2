@@ -35,8 +35,10 @@ service cloud.firestore {
       }
 
       match /submissions/{subId} {
-        // 學生可新增提交；任何已登入老師可讀／管理
-        allow read: if isSignedIn();
+        // MVP: allow read like teamSessions so Monitor works even if Auth
+        // token briefly missing on iOS Safari after popup/redirect glitches.
+        // Writes still require signed-in teacher (update/delete); create stays open for students.
+        allow read: if true;
         allow create: if true
           && request.resource.data.keys().hasAll(['teamId', 'teamName', 'locationId', 'answers', 'submittedAt']);
         allow update, delete: if isSignedIn();

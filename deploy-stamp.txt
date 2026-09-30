@@ -1,1 +1,1 @@
-2026-09-30 08:21 HKT iOS textarea focus fix 20260930a
+2026-09-30 08:28 HKT iOS keyboard + teacher monitor auth 20260930a
