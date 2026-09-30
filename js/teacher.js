@@ -14,16 +14,9 @@
     loadText("js/teacher.p1.txt" + v) +
     loadText("js/teacher.p2a.txt" + v) +
     loadText("js/teacher.p2b.txt" + v) +
-    loadText("js/teacher.p3.txt" + v);
+    loadText("js/teacher.p3a0.txt" + v) +
+    loadText("js/teacher.p3a1.txt" + v) +
+    loadText("js/teacher.p3b.txt" + v) +
+    loadText("js/teacher.p3c.txt" + v);
   (0, eval)(code);
-  try {
-    (0, eval)(loadText("js/completion-page.js" + v));
-  } catch (e) {
-    console.warn("completion-page.js load failed", e);
-  }
-  try {
-    (0, eval)(loadText("js/site-footer.js" + v));
-  } catch (e) {
-    console.warn("site-footer.js load failed", e);
-  }
 })();
