@@ -1,0 +1,92 @@
+/**
+ * 應用入口：Demo 偵測、路由、Landing
+ */
+(function () {
+  function qs(name) {
+    return new URLSearchParams(window.location.search).get(name);
+  }
+
+  function detectDemo() {
+    if (qs("demo") === "1" || qs("demo") === "true") return true;
+    if (!window.isFirebaseConfigured || !window.isFirebaseConfigured()) return true;
+    return false;
+  }
+
+  async function boot() {
+    const demo = detectDemo();
+    DataStore.init({ demo });
+
+    const demoBadge = document.getElementById("demoBadge");
+    if (demoBadge) {
+      demoBadge.classList.toggle("hidden", !DataStore.isDemo());
+    }
+
+    // Prefill slug from ?p=
+    const slug = qs("p");
+    if (slug) {
+      const input = document.getElementById("teamSlug");
+      if (input) input.value = slug;
+    }
+
+    bindLanding();
+    bindGlobal();
+
+    document.getElementById("bootLoading").classList.add("hidden");
+
+    // Restore Firebase Auth before trusting a cached teacher session.
+    // projects/locations/teams are publicly readable, so sessionStorage alone
+    // can show the project list/editor while submissions (monitor) fail
+    // without request.auth — especially on iOS where popup auth is flaky.
+    if (!DataStore.isDemo()) {
+      try {
+        if (Auth.ensurePersistence) await Auth.ensurePersistence();
+      } catch (e) {}
+      // Complete Google redirect login (iOS Safari path) before anything else.
+      try {
+        var redirected = await Auth.completeTeacherRedirectIfAny();
+        if (redirected) {
+          sessionStorage.removeItem("gpsgame2_pending_teacher_redirect");
+          await TeacherUI.start(redirected);
+          routeFromHash();
+          return;
+        }
+      } catch (e) {
+        console.warn("completeTeacherRedirectIfAny", e && e.message);
+        alert((e && e.message) || "Google 登入還原失敗，請再試一次。");
+      }
+      await Auth.waitForFirebaseAuth();
+    }
+
+    let session = Auth.getSession();
+    if (session && session.role === "team") {
+      const project = await DataStore.getProject(session.projectId);
+      if (project) {
+        await StudentUI.start(session, project);
+        routeFromHash();
+        return;
+      }
+      Auth.clearSession();
+    }
+    if (session && session.role === "teacher") {
+      session = await Auth.ensureTeacherAuth({ force: true });
+      if (!session || (!session.demo && Auth.getFirebaseUser && !Auth.getFirebaseUser())) {
+        alert("登入狀態已過期或未還原（iPhone 常見）。請重新以 Google 登入老師後台。");
+        showLanding();
+        return;
+      }
+      await TeacherUI.start(session);
+      routeFromHash();
+      return;
+    }
+
+    // Pending redirect flag but no result yet — stay on landing
+    showLanding();
+  }
+
+  function showLanding() {
+    StudentUI.showView("view-landing");
+    document.getElementById("appHeader").classList.add("hidden");
+    window.location.hash = "#/";
+  }
+  window.showLandingFromTeacher = showLanding;
+
