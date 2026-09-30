@@ -1,0 +1,125 @@
+  async function loginTeam(slug, teamName, password) {
+    const project = await DataStore.getProjectBySlug((slug || "").trim());
+    if (!project) throw new Error("找不到專案（請檢查專案代碼／網址）");
+    const team = await DataStore.findTeam(project.id, teamName, password);
+    if (!team) throw new Error("隊伍名稱或密碼不正確");
+    await DataStore.recordTeamLogin(project.id, team.id);
+    const session = {
+      role: "team",
+      projectId: project.id,
+      projectSlug: project.slug,
+      teamId: team.id,
+      teamName: team.name,
+      loginAt: new Date().toISOString()
+    };
+    saveSession(session);
+    return { session, project };
+  }
+
+  async function loginTeacherDemo() {
+    const session = {
+      role: "teacher",
+      uid: "demo_teacher",
+      email: "demo@school.edu.hk",
+      displayName: "示範老師",
+      loginAt: new Date().toISOString(),
+      demo: true
+    };
+    saveSession(session);
+    return session;
+  }
+
+  async function loginTeacherGoogle() {
+    if (DataStore.isDemo() || !window.isFirebaseConfigured()) {
+      return loginTeacherDemo();
+    }
+    await ensurePersistence();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const domain = window.ALLOWED_TEACHER_DOMAIN || "";
+    if (domain) provider.setCustomParameters({ hd: domain });
+
+    var useRedirect =
+      isIOSLike() ||
+      /forceRedirect=1/.test(window.location.search || "") ||
+      sessionStorage.getItem("gpsgame2_force_redirect") === "1";
+
+    if (useRedirect) {
+      sessionStorage.setItem("gpsgame2_pending_teacher_redirect", "1");
+      await firebase.auth().signInWithRedirect(provider);
+      // Page will navigate away; return a never-resolving promise as fallback
+      return new Promise(function () {});
+    }
+
+    try {
+      const result = await firebase.auth().signInWithPopup(provider);
+      const user = result.user;
+      const email = user.email || "";
+      var domainErr = assertTeacherDomain(email);
+      if (domainErr) {
+        await firebase.auth().signOut();
+        throw new Error(domainErr);
+      }
+      await upsertTeacherProfile(user);
+      authReadyUser = user;
+      authReadyPromise = Promise.resolve(user);
+      const session = teacherSessionFromUser(user);
+      saveSession(session);
+      return session;
+    } catch (e) {
+      var code = (e && e.code) || "";
+      var popupBroken =
+        code === "auth/popup-blocked" ||
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/cancelled-popup-request" ||
+        code === "auth/operation-not-supported-in-this-environment" ||
+        /popup/i.test(String((e && e.message) || ""));
+      if (popupBroken || isIOSLike()) {
+        sessionStorage.setItem("gpsgame2_force_redirect", "1");
+        sessionStorage.setItem("gpsgame2_pending_teacher_redirect", "1");
+        await firebase.auth().signInWithRedirect(provider);
+        return new Promise(function () {});
+      }
+      throw e;
+    }
+  }
+
+  async function logout() {
+    clearSession();
+    authReadyPromise = null;
+    authReadyUser = undefined;
+    persistenceReady = null;
+    sessionStorage.removeItem("gpsgame2_pending_teacher_redirect");
+    sessionStorage.removeItem("gpsgame2_force_redirect");
+    if (!DataStore.isDemo() && window.firebase && firebase.auth) {
+      try {
+        await firebase.auth().signOut();
+      } catch (e) {}
+    }
+  }
+
+  /** Current Firebase user if any (for monitor gate). */
+  function getFirebaseUser() {
+    try {
+      if (!window.firebase || !firebase.auth) return null;
+      return firebase.auth().currentUser || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  return {
+    getSession,
+    clearSession,
+    waitForFirebaseAuth,
+    ensureTeacherAuth,
+    completeTeacherRedirectIfAny,
+    ensurePersistence,
+    isPermissionError,
+    isIOSLike,
+    getFirebaseUser,
+    loginTeam,
+    loginTeacherGoogle,
+    loginTeacherDemo,
+    logout
+  };
+})();
