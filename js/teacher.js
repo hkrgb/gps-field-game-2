@@ -16,7 +16,8 @@
     loadText("js/teacher.p2b.txt" + v) +
     loadText("js/teacher.p3a0.txt" + v) +
     loadText("js/teacher.p3a1.txt" + v) +
-    loadText("js/teacher.p3b.txt" + v) +
+    loadText("js/teacher.p3b1.txt" + v) +
+    loadText("js/teacher.p3b2.txt" + v) +
     loadText("js/teacher.p3c.txt" + v);
   (0, eval)(code);
 })();
