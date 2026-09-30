@@ -11,7 +11,8 @@
   }
   var v = "?v=20260930a";
   var code =
-    loadText("js/student.p1a.txt" + v) +
+    loadText("js/student.p1a-head.txt" + v) +
+    loadText("js/student.p1a-tail.txt" + v) +
     loadText("js/student.p1a2.txt" + v) +
     loadText("js/student.ios-soft.txt" + v) +
     loadText("js/student.p1b.txt" + v) +
