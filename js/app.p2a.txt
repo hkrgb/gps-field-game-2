@@ -1,0 +1,59 @@
+  function bindLanding() {
+    document.querySelectorAll("[data-login-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.getAttribute("data-login-tab");
+        document.querySelectorAll("[data-login-tab]").forEach((b) => {
+          const on = b.getAttribute("data-login-tab") === tab;
+          b.className =
+            "flex-1 py-2.5 text-sm font-semibold rounded-xl " +
+            (on ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600");
+        });
+        document.getElementById("panelTeam").classList.toggle("hidden", tab !== "team");
+        document.getElementById("panelAdmin").classList.toggle("hidden", tab !== "admin");
+      });
+    });
+
+    document.getElementById("teamLoginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const slug = document.getElementById("teamSlug").value.trim();
+      const name = document.getElementById("teamName").value.trim();
+      const pw = document.getElementById("teamPassword").value;
+      const errEl = document.getElementById("teamLoginError");
+      errEl.classList.add("hidden");
+      StudentUI.showLoading(true);
+      try {
+        const { session, project } = await Auth.loginTeam(slug, name, pw);
+        await StudentUI.start(session, project);
+      } catch (err) {
+        errEl.textContent = err.message || "登入失敗";
+        errEl.classList.remove("hidden");
+      } finally {
+        StudentUI.showLoading(false);
+      }
+    });
+
+    document.getElementById("btnTeacherLogin").addEventListener("click", async () => {
+      const errEl = document.getElementById("adminLoginError");
+      errEl.classList.add("hidden");
+      StudentUI.showLoading(true);
+      try {
+        const session = await Auth.loginTeacherGoogle();
+        await TeacherUI.start(session);
+      } catch (err) {
+        errEl.textContent = err.message || "登入失敗";
+        errEl.classList.remove("hidden");
+      } finally {
+        StudentUI.showLoading(false);
+      }
+    });
+
+    const resetBtn = document.getElementById("btnResetDemo");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        if (!confirm("重設 Demo 資料？所有本地示範提交會清空。")) return;
+        DataStore.resetDemo();
+        alert("已重設。Demo 專案代碼：cheungchau-demo；隊伍：示範隊／密碼 demo");
+      });
+    }
+  }
+
