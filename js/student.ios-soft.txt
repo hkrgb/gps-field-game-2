@@ -1,0 +1,197 @@
+  function isAnswerFieldFocused() {
+    const el = document.activeElement;
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "input" || tag === "select") return true;
+    if (el.isContentEditable) return true;
+    try {
+      return !!(el.closest && el.closest("#locQuestions, #locQuestionsSection"));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function syncDraftsFromDom() {
+    if (!currentLocId) return;
+    const loc = locations.find(function (l) {
+      return l.id === currentLocId;
+    });
+    if (!loc) return;
+    const root = document.getElementById("locQuestions");
+    if (!root) return;
+    if (!root.querySelector("textarea[data-qid], input[type='radio']")) return;
+    collectCurrentAnswers(loc);
+  }
+
+  function computeLocGpsState(loc) {
+    const r = radius();
+    const needsGps = locationRequiresGps(loc);
+    let unlocked = testMode || !needsGps;
+    let distance = null;
+    if (currentCoords) {
+      distance = GPS.calculateDistance(
+        currentCoords.lat,
+        currentCoords.lng,
+        loc.lat,
+        loc.lng
+      );
+      if (needsGps && distance <= r) unlocked = true;
+    }
+    return {
+      needsGps: needsGps,
+      unlocked: unlocked,
+      distance: distance,
+      r: r,
+      showQuestions: unlocked || !needsGps,
+      readOnly: isSubmissionLocked(loc.id)
+    };
+  }
+
+  function locUiKey(loc, state) {
+    return [
+      loc.id,
+      state.showQuestions ? "1" : "0",
+      state.unlocked ? "1" : "0",
+      state.readOnly ? "1" : "0",
+      state.needsGps ? "1" : "0"
+    ].join("|");
+  }
+
+  function applyLockBanner(loc, state) {
+    const lockBanner = document.getElementById("locLockBanner");
+    if (!lockBanner) return;
+    if (!state.needsGps || state.unlocked) {
+      lockBanner.classList.add("hidden");
+    } else {
+      lockBanner.classList.remove("hidden");
+      const lockTitle = lockBanner.querySelector("p.font-bold");
+      if (lockTitle) {
+        lockTitle.innerHTML =
+          '<i class="fa-solid fa-lock"></i> 問題尚未解鎖';
+      }
+      let lockMsg =
+        state.distance != null
+          ? "尚未到達（約 " +
+            Math.round(state.distance) +
+            " 米，需在 " +
+            state.r +
+            " 米內）。"
+          : "正在等待 GPS…（需在 " + state.r + " 米範圍內）。";
+      lockMsg += "請參考上方指引前往；到達後才會顯示問題。";
+      const msgEl = document.getElementById("locLockMsg");
+      if (msgEl) msgEl.textContent = lockMsg;
+    }
+  }
+
+  /**
+   * Soft UI refresh for GPS ticks / session polls while already on a location.
+   * Critical for iOS Safari: must not destroy focused textarea (keyboard dies).
+   */
+  function softRefreshLocationUi() {
+    if (!currentLocId) return;
+    const loc = locations.find(function (l) {
+      return l.id === currentLocId;
+    });
+    if (!loc) return;
+    const locView = document.getElementById("view-location");
+    if (!locView || locView.classList.contains("hidden")) return;
+
+    const state = computeLocGpsState(loc);
+    applyLockBanner(loc, state);
+
+    const qSection = document.getElementById("locQuestionsSection");
+    const infoCard = document.getElementById("locInfoCard");
+    const done = isLocComplete(loc.id);
+    const key = locUiKey(loc, state);
+    const typing = isAnswerFieldFocused();
+
+    if (state.showQuestions) {
+      if (qSection) qSection.classList.remove("hidden");
+      const showRainbow =
+        state.needsGps && state.unlocked && !done && !testMode;
+      if (infoCard) infoCard.classList.toggle("rainbow-arrived", showRainbow);
+      if (qSection) qSection.classList.toggle("rainbow-arrived", showRainbow);
+
+      const qRoot = document.getElementById("locQuestions");
+      const hasFields = !!(qRoot && qRoot.children.length);
+      if (!hasFields || key !== lastLocUiKey) {
+        if (typing && hasFields) {
+          /* keep DOM; chrome already updated */
+        } else {
+          if (hasFields) syncDraftsFromDom();
+          renderQuestions(loc, state.readOnly, true);
+          lastLocUiKey = key;
+        }
+      }
+    } else if (!typing) {
+      if (qSection) qSection.classList.add("hidden");
+      if (infoCard) infoCard.classList.remove("rainbow-arrived");
+      if (qSection) qSection.classList.remove("rainbow-arrived");
+      lastLocUiKey = key;
+    }
+    if (!typing) updateHeader();
+  }
+
+  async function openLocation(locId, opts) {
+    opts = opts || {};
+    const loc = locations.find((l) => l.id === locId);
+    if (!loc) return;
+    if (!opts.skipRefresh) {
+      await refreshTeamSessionFromServer({ force: true, refreshUi: false });
+    }
+    currentLocId = locId;
+    showView("view-location");
+    window.location.hash = "#/loc/" + locId;
+
+    document.getElementById("locPageTitle").textContent = loc.name;
+    document.getElementById("locPageDesc").textContent = loc.description || "";
+    const imgWrap = document.getElementById("locPageImages");
+    imgWrap.innerHTML = "";
+    (loc.images || []).forEach((url) => {
+      if (!url) return;
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = loc.name;
+      img.className = "rounded-xl w-full object-cover max-h-48 border border-slate-200 img-zoomable";
+      img.loading = "lazy";
+      img.onclick = function () {
+        openLightbox(url, loc.name);
+      };
+      imgWrap.appendChild(img);
+    });
+    if (!(loc.images || []).length) {
+      const needsGpsHint = locationRequiresGps(loc);
+      imgWrap.innerHTML =
+        '<div class="bg-slate-100 rounded-xl p-6 text-center text-slate-500 text-sm">' +
+        '<i class="fa-solid fa-map-location-dot text-2xl text-emerald-500 mb-2"></i>' +
+        "<p>" +
+        (needsGpsHint
+          ? "請前往此地區；到達 GPS 範圍後會顯示問題。"
+          : "此地區不須到達 GPS，可直接回答下方問題。") +
+        "</p></div>";
+    }
+
+    const state = computeLocGpsState(loc);
+    const qSection = document.getElementById("locQuestionsSection");
+    const infoCard = document.getElementById("locInfoCard");
+    const done = isLocComplete(loc.id);
+    applyLockBanner(loc, state);
+
+    if (state.showQuestions) {
+      qSection.classList.remove("hidden");
+      const showRainbow =
+        state.needsGps && state.unlocked && !done && !testMode;
+      if (infoCard) {
+        infoCard.classList.toggle("rainbow-arrived", showRainbow);
+      }
+      qSection.classList.toggle("rainbow-arrived", showRainbow);
+      renderQuestions(loc, state.readOnly, true);
+    } else {
+      qSection.classList.add("hidden");
+      if (infoCard) infoCard.classList.remove("rainbow-arrived");
+      qSection.classList.remove("rainbow-arrived");
+    }
+    lastLocUiKey = locUiKey(loc, state);
+    updateHeader();
+  }
+
