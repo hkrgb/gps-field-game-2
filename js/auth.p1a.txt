@@ -1,0 +1,199 @@
+/**
+ * 認證：隊伍（slug + 隊名 + 密碼）與老師（Google / Demo）
+ * iOS Safari: prefer signInWithRedirect; LOCAL persistence; getRedirectResult on boot.
+ */
+window.Auth = (function () {
+  const SESSION_KEY = "gpsgame2_session";
+  let authReadyPromise = null;
+  let authReadyUser = undefined; // undefined = not yet resolved; null/user once known
+  let persistenceReady = null;
+
+  function loadSession() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveSession(session) {
+    if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    else sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  function getSession() {
+    return loadSession();
+  }
+
+  function clearSession() {
+    saveSession(null);
+  }
+
+  function isIOSLike() {
+    try {
+      var ua = navigator.userAgent || "";
+      if (/iPad|iPhone|iPod/i.test(ua)) return true;
+      // iPadOS 13+ may report as Mac with touch
+      if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function ensurePersistence() {
+    if (persistenceReady) return persistenceReady;
+    if (DataStore.isDemo() || !window.firebase || !firebase.auth) {
+      persistenceReady = Promise.resolve(false);
+      return persistenceReady;
+    }
+    persistenceReady = firebase
+      .auth()
+      .setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+      .then(function () {
+        return true;
+      })
+      .catch(function (e) {
+        console.warn("setPersistence LOCAL failed", e && e.message);
+        return false;
+      });
+    return persistenceReady;
+  }
+
+  /**
+   * Wait until Firebase Auth has finished restoring persistence (or timeout).
+   * Does NOT permanently cache a null from a timeout — later calls can retry.
+   */
+  function waitForFirebaseAuth(timeoutMs) {
+    timeoutMs = timeoutMs == null ? 10000 : timeoutMs;
+    if (DataStore.isDemo() || !window.firebase || !firebase.auth) {
+      return Promise.resolve(null);
+    }
+    // If we already have a definitive user (including from redirect), reuse.
+    if (authReadyUser !== undefined && authReadyUser !== null) {
+      return Promise.resolve(authReadyUser);
+    }
+    if (firebase.auth().currentUser) {
+      authReadyUser = firebase.auth().currentUser;
+      return Promise.resolve(authReadyUser);
+    }
+    // If a prior wait is in flight, join it; if it resolved to null via timeout,
+    // allow a fresh wait below.
+    if (authReadyPromise) return authReadyPromise;
+
+    authReadyPromise = new Promise(function (resolve) {
+      var settled = false;
+      var timedOut = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        timedOut = true;
+        try {
+          var u = firebase.auth().currentUser || null;
+          // Timeout with null: clear promise so callers can retry later.
+          if (!u) {
+            authReadyPromise = null;
+            authReadyUser = undefined;
+          } else {
+            authReadyUser = u;
+          }
+          resolve(u);
+        } catch (e) {
+          authReadyPromise = null;
+          authReadyUser = undefined;
+          resolve(null);
+        }
+      }, timeoutMs);
+      var unsub = firebase.auth().onAuthStateChanged(function (user) {
+        if (settled && timedOut && user) {
+          // Late restore after timeout — remember user for next ensureTeacherAuth.
+          authReadyUser = user;
+          authReadyPromise = Promise.resolve(user);
+          return;
+        }
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          unsub();
+        } catch (e) {}
+        authReadyUser = user || null;
+        resolve(user || null);
+      });
+    });
+    return authReadyPromise;
+  }
+
+  function teacherSessionFromUser(user) {
+    var email = (user && user.email) || "";
+    return {
+      role: "teacher",
+      uid: user.uid,
+      email: email,
+      displayName: user.displayName || email,
+      loginAt: new Date().toISOString(),
+      demo: false
+    };
+  }
+
+  async function upsertTeacherProfile(user) {
+    var email = user.email || "";
+    await firebase
+      .firestore()
+      .collection("teachers")
+      .doc(user.uid)
+      .set(
+        {
+          email: email,
+          displayName: user.displayName || "",
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      );
+  }
+
+  function assertTeacherDomain(email) {
+    var domain = window.ALLOWED_TEACHER_DOMAIN || "";
+    if (domain && email && !email.endsWith("@" + domain)) {
+      return "只有 @" + domain + " 的帳號可以登入老師後台";
+    }
+    return null;
+  }
+
+  /**
+   * Complete a redirect-based Google login if returning from Google.
+   * Call early on boot (before trusting sessionStorage alone).
+   * @returns {Promise<object|null>} teacher session or null
+   */
+  async function completeTeacherRedirectIfAny() {
+    if (DataStore.isDemo() || !window.firebase || !firebase.auth) return null;
+    await ensurePersistence();
+    try {
+      var result = await firebase.auth().getRedirectResult();
+      if (!result || !result.user) return null;
+      var user = result.user;
+      var email = user.email || "";
+      var domainErr = assertTeacherDomain(email);
+      if (domainErr) {
+        await firebase.auth().signOut();
+        clearSession();
+        throw new Error(domainErr);
+      }
+      await upsertTeacherProfile(user);
+      authReadyUser = user;
+      authReadyPromise = Promise.resolve(user);
+      var session = teacherSessionFromUser(user);
+      saveSession(session);
+      return session;
+    } catch (e) {
+      // getRedirectResult throws if no redirect pending in some SDK versions — ignore empty
+      if (e && e.code === "auth/no-auth-event") return null;
+      if (e && /沒有|no.*redirect|null/i.test(String(e.message || ""))) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * For a cached teacher session: ensure Firebase Auth matches session.uid.
+   * forceRefresh=true waits longer / clears stale null cache.
+   */
