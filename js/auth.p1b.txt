@@ -1,0 +1,59 @@
+  async function ensureTeacherAuth(opts) {
+    opts = opts || {};
+    var session = loadSession();
+    if (!session || session.role !== "teacher") return null;
+    if (session.demo || DataStore.isDemo()) return session;
+
+    await ensurePersistence();
+
+    if (opts.force) {
+      // Allow a fresh wait even if a prior timeout cached emptiness.
+      if (!firebase.auth().currentUser) {
+        authReadyPromise = null;
+        if (authReadyUser === null) authReadyUser = undefined;
+      }
+    }
+
+    var user = firebase.auth().currentUser;
+    if (!user) {
+      user = await waitForFirebaseAuth(opts.force ? 12000 : 10000);
+    }
+    // One more tick — iOS IndexedDB restore can lag past first callback.
+    if (!user) {
+      await new Promise(function (r) {
+        setTimeout(r, 400);
+      });
+      user = firebase.auth().currentUser;
+    }
+    if (!user || user.uid !== session.uid) {
+      // Don't clear session immediately on force=false flaky restore — but for
+      // monitor/writes we need a real user. Clear so UI forces re-login.
+      clearSession();
+      try {
+        if (firebase.auth().currentUser) await firebase.auth().signOut();
+      } catch (e) {}
+      authReadyUser = undefined;
+      authReadyPromise = null;
+      return null;
+    }
+    if (user.email && user.email !== session.email) {
+      session.email = user.email;
+      session.displayName = user.displayName || user.email;
+      saveSession(session);
+    }
+    authReadyUser = user;
+    return session;
+  }
+
+  /** True when Firestore permission errors likely mean missing Auth token. */
+  function isPermissionError(err) {
+    if (!err) return false;
+    var code = err.code || "";
+    var msg = String(err.message || err);
+    return (
+      code === "permission-denied" ||
+      /Missing or insufficient permissions/i.test(msg) ||
+      /PERMISSION_DENIED/i.test(msg)
+    );
+  }
+
