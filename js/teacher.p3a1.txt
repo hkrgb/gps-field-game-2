@@ -1,0 +1,160 @@
+  async function forceTeacherReloginForMonitor(msg) {
+    alert(
+      msg ||
+        "監察需要有效的 Google 登入（讀取提交紀錄）。請重新以 Google 登入後再按監察。"
+    );
+    try {
+      await Auth.logout();
+    } catch (e) {}
+    if (typeof window.showLandingFromTeacher === "function") {
+      window.showLandingFromTeacher();
+    } else {
+      document.getElementById("appHeader").classList.add("hidden");
+      StudentUI.showView("view-landing");
+      window.location.hash = "#/";
+    }
+    // Switch landing to admin tab if present
+    try {
+      var adminTab = document.querySelector('[data-login-tab="admin"]');
+      if (adminTab) adminTab.click();
+    } catch (e2) {}
+  }
+
+  async function openMonitor(projectId) {
+    StudentUI.showLoading(true);
+    try {
+      // Strong auth: force retry of Firebase restore (iOS IndexedDB can lag).
+      const authed = await Auth.ensureTeacherAuth({ force: true });
+      if (!authed) {
+        await forceTeacherReloginForMonitor(
+          "登入狀態已過期或未還原，請重新以 Google 登入後再監察。"
+        );
+        return;
+      }
+      // Edit UI can load without Auth (public reads). Monitor needs Auth for
+      // submissions — require a live firebase.auth().currentUser.
+      if (!authed.demo && Auth.getFirebaseUser && !Auth.getFirebaseUser()) {
+        await forceTeacherReloginForMonitor(
+          "Google 登入尚未還原（iPhone 常見）。請再按「老師 Google 登入」後開啟監察。"
+        );
+        return;
+      }
+      session = authed;
+      monitorProjectId = projectId;
+      currentProject = await DataStore.getProject(projectId);
+      locations = await DataStore.listLocations(projectId);
+      teams = await DataStore.listTeams(projectId);
+      const sessions = await DataStore.listTeamSessions(projectId);
+      const submissions = await DataStore.listSubmissions(projectId);
+      const sortedLocs = locations
+        .slice()
+        .sort(function (a, b) {
+          return (a.order || 0) - (b.order || 0);
+        });
+      monitorCache = {
+        project: currentProject,
+        locations: sortedLocs,
+        teams: teams,
+        sessions: sessions,
+        submissions: submissions
+      };
+      showTeacherSection("monitor");
+      document.getElementById("monTitle").textContent =
+        "監察：" + (currentProject.title || "");
+      destroyTrailMap();
+      const detail = document.getElementById("monTeamDetail");
+      if (detail) {
+        detail.classList.add("hidden");
+        detail.innerHTML = "";
+      }
+      const sessBox = document.getElementById("monSessions");
+      sessBox.innerHTML = "";
+      const sessMap = {};
+      sessions.forEach(function (s) {
+        sessMap[s.teamId] = s;
+      });
+      if (!teams.length && !sessions.length) {
+        sessBox.innerHTML =
+          '<p class="text-sm text-slate-500">尚無隊伍。請先在編輯頁新增隊伍。</p>';
+      }
+      teams.forEach(function (t) {
+        const s = sessMap[t.id] || {};
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className =
+          "w-full text-left bg-white border border-slate-200 rounded-xl p-3 text-sm hover:border-emerald-400 hover:shadow-sm transition";
+        card.innerHTML = buildTeamProgressHtml(t, s, sortedLocs);
+        card.onclick = function () {
+          renderTeamDetail(t.id);
+        };
+        sessBox.appendChild(card);
+      });
+      sessions.forEach(function (s) {
+        if (teams.some(function (t) {
+          return t.id === s.teamId;
+        }))
+          return;
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className =
+          "w-full text-left bg-white border border-amber-200 rounded-xl p-3 text-sm";
+        card.innerHTML = buildTeamProgressHtml(
+          { id: s.teamId, name: s.teamId },
+          s,
+          sortedLocs
+        );
+        card.onclick = function () {
+          renderTeamDetail(s.teamId);
+        };
+        sessBox.appendChild(card);
+      });
+
+      window._monExport = {
+        project: currentProject,
+        locations: sortedLocs,
+        submissions: submissions
+      };
+      window.location.hash = "#/teacher/monitor/" + projectId;
+    } catch (e) {
+      if (Auth.isPermissionError && Auth.isPermissionError(e)) {
+        var retry = confirm(
+          "無法讀取監察資料（權限不足）。\n通常是 iPhone 上 Google 登入未還原。\n\n按「確定」立即重新 Google 登入；按「取消」返回。"
+        );
+        if (retry) {
+          try {
+            await Auth.logout();
+          } catch (e2) {}
+          try {
+            await Auth.loginTeacherGoogle();
+            // If redirect, page navigates away; if popup, restart monitor
+            if (Auth.getFirebaseUser && Auth.getFirebaseUser()) {
+              await openMonitor(projectId);
+              return;
+            }
+          } catch (e3) {
+            alert((e3 && e3.message) || "重新登入失敗");
+          }
+          if (typeof window.showLandingFromTeacher === "function") {
+            window.showLandingFromTeacher();
+          }
+        }
+      } else {
+        alert(e.message || String(e));
+      }
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+  async function refreshMonitor() {
+    if (!monitorProjectId) {
+      alert("請先從專案列表開啟監察。");
+      return;
+    }
+    await openMonitor(monitorProjectId);
+  }
+
+  /**
+   * Clear runtime data: submissions + teamSessions progress/GPS trail.
+   * Keeps locations, questions, teams, project settings.
+   */
