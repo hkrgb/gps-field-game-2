@@ -25,13 +25,13 @@ body {
 }
 
 #mainContainer {
-  max-width: 28rem; /* max-w-md student */
+  max-width: 28rem;
   margin-left: auto;
   margin-right: auto;
 }
 
 #mainContainer.teacher-wide {
-  max-width: 56rem; /* wider teacher admin */
+  max-width: 56rem;
 }
 
 .progress-square {
@@ -106,8 +106,6 @@ body.text-sm-mode #mainContainer {
   letter-spacing: 0.02em;
 }
 
-
-/* Teacher monitor trail map */
 .mon-trail-map {
   height: 220px;
   width: 100%;
@@ -119,8 +117,6 @@ body.text-sm-mode #mainContainer {
   font: inherit;
 }
 
-
-/* Rainbow animated border — arrived / unlocked location */
 @keyframes rainbow-border-shift {
   0% { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
@@ -161,8 +157,6 @@ body.text-sm-mode #mainContainer {
   z-index: -1;
 }
 
-
-/* Image lightbox (tap to enlarge) */
 .img-zoomable {
   cursor: zoom-in;
   -webkit-tap-highlight-color: transparent;
@@ -208,7 +202,6 @@ body.text-sm-mode #mainContainer {
   z-index: 1;
 }
 
-/* Site footer (細字) — fixed bottom, does not block content (pointer-events on children only) */
 .site-footer {
   position: fixed;
   left: 0;
@@ -231,7 +224,7 @@ body.text-sm-mode #mainContainer {
   font-size: 10px;
   line-height: 1.4;
   color: #64748b;
-  pointer-events: auto;
+  pointer-events: none;
 }
 body:has(#mainContainer.teacher-wide) .site-footer-inner {
   max-width: 56rem;
@@ -240,6 +233,7 @@ body:has(#mainContainer.teacher-wide) .site-footer-inner {
   color: #475569;
   text-decoration: underline;
   text-underline-offset: 2px;
+  pointer-events: auto;
 }
 .site-footer-school:hover {
   color: #047857;
@@ -258,7 +252,61 @@ body:has(#mainContainer.teacher-wide) .site-footer-inner {
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+  pointer-events: auto;
 }
 .site-footer-disclaimer:hover {
   color: #047857;
+}
+
+#locQuestions .answer-input,
+#locQuestions textarea,
+#locQuestions input[type="text"],
+#locQuestions input[type="radio"],
+#teamLoginForm input,
+#locModal input,
+#locModal textarea,
+#lmQuestions textarea,
+#lmQuestions input,
+#edPanel_settings input,
+#edPanel_settings select {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+#locQuestions .answer-input,
+#locQuestions textarea {
+  font-size: 16px;
+  line-height: 1.45;
+  min-height: 2.75rem;
+  transform: translateZ(0);
+}
+
+#locQuestionsSection,
+#locQuestions,
+#locQuestions * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#locQuestions label {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.kb-open .site-footer {
+  visibility: hidden;
+  pointer-events: none !important;
+  opacity: 0;
+}
+
+body.kb-open {
+  padding-bottom: 0.5rem;
+}
+
+#globalLoading.hidden {
+  display: none !important;
+  pointer-events: none !important;
 }
