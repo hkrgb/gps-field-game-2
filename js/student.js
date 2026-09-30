@@ -13,6 +13,7 @@
   var code =
     loadText("js/student.p1a.txt" + v) +
     loadText("js/student.p1a2.txt" + v) +
+    loadText("js/student.ios-soft.txt" + v) +
     loadText("js/student.p1b.txt" + v) +
     loadText("js/student.p2.txt" + v);
   (0, eval)(code);
