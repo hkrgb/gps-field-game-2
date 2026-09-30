@@ -1,0 +1,76 @@
+  async function importLocationsJson(fileOrText) {
+    if (!currentProject) {
+      alert("請先開啟專案");
+      return;
+    }
+    const authed = await requireTeacherAuth("匯入地區");
+    if (!authed) return;
+    let text = "";
+    try {
+      if (typeof fileOrText === "string") {
+        text = fileOrText;
+      } else if (fileOrText && typeof fileOrText.text === "function") {
+        text = await fileOrText.text();
+      } else {
+        text = prompt("請貼上地區 JSON（或先選檔案）：", "") || "";
+      }
+      if (!text.trim()) return;
+      const incoming = parseLocationsImport(text);
+      if (!incoming.length) {
+        alert("檔案沒有地區資料");
+        return;
+      }
+      if (
+        !confirm(
+          "即將匯入 " +
+            incoming.length +
+            " 個地區／問題（更新或新增）。確定繼續？"
+        )
+      ) {
+        return;
+      }
+      const doReplace = confirm(
+        "是否完整取代？\n確定＝刪除檔案中沒有的現有地區；取消＝僅更新／新增並保留其餘地區。"
+      );
+      StudentUI.showLoading(true);
+      try {
+        const kept = new Set();
+        for (let i = 0; i < incoming.length; i++) {
+          const loc = incoming[i];
+          const saved = await withTimeout(
+            DataStore.upsertLocation(currentProject.id, loc.id || null, loc),
+            20000,
+            "匯入地區"
+          );
+          kept.add(saved.id);
+        }
+        if (doReplace) {
+          for (let j = 0; j < locations.length; j++) {
+            const old = locations[j];
+            if (!kept.has(old.id)) {
+              await withTimeout(
+                DataStore.deleteLocation(currentProject.id, old.id),
+                15000,
+                "刪除舊地區"
+              );
+            }
+          }
+        }
+        locations = await withTimeout(
+          DataStore.listLocations(currentProject.id),
+          15000,
+          "重新載入地區"
+        );
+        renderLocList();
+        alert("匯入完成（" + locations.length + " 個地區）");
+      } catch (e) {
+        alert(writeErrorMessage(e));
+      } finally {
+        StudentUI.showLoading(false);
+      }
+    } catch (e) {
+      alert("無法解析 JSON：" + (e && e.message ? e.message : e));
+    }
+  }
+
+
