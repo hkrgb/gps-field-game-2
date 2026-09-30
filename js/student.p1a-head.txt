@@ -1,0 +1,130 @@
+/**
+ * 學生／隊伍端：登入後 Hub、地區內容頁、GPS 解鎖、提交
+ */
+window.StudentUI = (function () {
+  let project = null;
+  let locations = [];
+  let session = null;
+  let teamSession = null;
+  let currentCoords = null;
+  let lastReportedCoords = null;
+  let lastGpsReportAt = 0;
+  let gpsWatchStarted = false;
+  let gpsAutoTimer = null;
+  let sessionRefreshTimer = null;
+  let sessionRefreshBound = false;
+  let lastSessionFetchAt = 0;
+  let testMode = false;
+  let currentLocId = null;
+  let lastLocUiKey = null; // avoid GPS re-render destroying focused inputs
+  let draftAnswers = {}; // locationId -> { qId: value } // unsubmitted only
+
+  const DRAFT_PREFIX = "gpsgame2_draft_";
+
+  function draftKey() {
+    return DRAFT_PREFIX + (session ? session.projectId + "_" + session.teamId : "");
+  }
+
+  function loadDrafts() {
+    try {
+      draftAnswers = JSON.parse(localStorage.getItem(draftKey()) || "{}");
+    } catch (e) {
+      draftAnswers = {};
+    }
+  }
+
+  function saveDrafts() {
+    try {
+      localStorage.setItem(draftKey(), JSON.stringify(draftAnswers));
+    } catch (e) {
+      /* ignore quota */
+    }
+  }
+
+  function clearAllDrafts() {
+    draftAnswers = {};
+    try {
+      localStorage.removeItem(draftKey());
+    } catch (e) {}
+  }
+
+  function serverHasAnyLocationAnswers(sess) {
+    const map = (sess && sess.locationAnswers) || {};
+    const keys = Object.keys(map);
+    for (let i = 0; i < keys.length; i++) {
+      const ans = map[keys[i]];
+      if (ans && typeof ans === "object" && Object.keys(ans).length) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Firebase is source of truth for progress. localStorage drafts are only for
+   * unsubmitted answers. When teacher clears project data (empty completions +
+   * no locationAnswers), wipe this team's drafts so phones stop showing old work.
+   */
+  function reconcileDraftsWithServer(prevSession, nextSession) {
+    const nextIds = (nextSession && nextSession.completedLocationIds) || [];
+    const prevIds = (prevSession && prevSession.completedLocationIds) || [];
+    if (nextIds.length === 0 && !serverHasAnyLocationAnswers(nextSession)) {
+      clearAllDrafts();
+      return;
+    }
+    const nextSet = new Set(nextIds);
+    const unlocked = (nextSession && nextSession.unlockedEdits) || {};
+    let changed = false;
+    // Drop drafts for locations no longer completed on server (cleared)
+    prevIds.forEach(function (id) {
+      if (!nextSet.has(id) && draftAnswers[id]) {
+        delete draftAnswers[id];
+        changed = true;
+      }
+    });
+    // Drop drafts for server-completed locations that are locked (answers live on server)
+    nextIds.forEach(function (id) {
+      if (!unlocked[id] && draftAnswers[id]) {
+        delete draftAnswers[id];
+        changed = true;
+      }
+    });
+    // Also drop drafts whose locationAnswers were cleared on server for that loc
+    const locAns = (nextSession && nextSession.locationAnswers) || {};
+    Object.keys(draftAnswers).forEach(function (locId) {
+      if (nextSet.has(locId)) return;
+      const serverAns = locAns[locId];
+      if (!serverAns || !Object.keys(serverAns).length) {
+        // keep unsubmitted drafts for incomplete locations
+        return;
+      }
+    });
+    if (changed) saveDrafts();
+  }
+
+  async function refreshTeamSessionFromServer(opts) {
+    opts = opts || {};
+    if (!session || !project) return teamSession;
+    const now = Date.now();
+    const minGap = opts.force ? 0 : 4000;
+    if (!opts.force && lastSessionFetchAt && now - lastSessionFetchAt < minGap) {
+      return teamSession;
+    }
+    const prev = teamSession;
+    try {
+      const next = await DataStore.getTeamSession(project.id, session.teamId);
+      lastSessionFetchAt = Date.now();
+      teamSession = next || {
+        lastLoginAt: null,
+        completedLocationIds: [],
+        locationAnswers: {},
+        unlockedEdits: {}
+      };
+      reconcileDraftsWithServer(prev, teamSession);
+      if (opts.refreshUi !== false) {
+        applySessionUiRefresh();
+      }
+    } catch (e) {
+      console.warn("refreshTeamSessionFromServer failed", e && e.message);
+    }
+    return teamSession;
+  }
+
