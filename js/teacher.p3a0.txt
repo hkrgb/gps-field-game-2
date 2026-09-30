@@ -1,0 +1,105 @@
+  function destroyTrailMap() {
+    if (trailMapInstance) {
+      try {
+        trailMapInstance.remove();
+      } catch (e) {}
+      trailMapInstance = null;
+    }
+  }
+
+  function renderTrailMap(trail, locs, sess) {
+    destroyTrailMap();
+    const el = document.getElementById("monTrailMap");
+    if (!el || typeof L === "undefined") {
+      if (el) {
+        el.innerHTML =
+          '<p class="text-xs text-slate-500 p-3 text-center">地圖元件未載入</p>';
+      }
+      return;
+    }
+    const pts = (trail || [])
+      .filter(function (p) {
+        return p && p.lat != null && p.lng != null;
+      })
+      .map(function (p) {
+        return [Number(p.lat), Number(p.lng)];
+      });
+    if (!pts.length && sess && sess.lastLat != null) {
+      pts.push([Number(sess.lastLat), Number(sess.lastLng)]);
+    }
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    trailMapInstance = map;
+    // LandsD GeoInfo Map (public XYZ) — basemap + TC labels
+    L.tileLayer(
+      "https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/WGS84/{z}/{x}/{y}.png",
+      {
+        minZoom: 10,
+        maxZoom: 20,
+        attribution: "地圖資料 © 地政總署 Lands Department"
+      }
+    ).addTo(map);
+    L.tileLayer(
+      "https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/WGS84/{z}/{x}/{y}.png",
+      {
+        minZoom: 10,
+        maxZoom: 20,
+        attribution: ""
+      }
+    ).addTo(map);
+    const fitPts = pts.slice();
+    if (pts.length) {
+      L.polyline(pts, {
+        color: "#059669",
+        weight: 4,
+        opacity: 0.85
+      }).addTo(map);
+      L.circleMarker(pts[pts.length - 1], {
+        radius: 7,
+        color: "#047857",
+        fillColor: "#34d399",
+        fillOpacity: 1
+      })
+        .bindPopup("目前／最新位置")
+        .addTo(map);
+      if (pts.length > 1) {
+        L.circleMarker(pts[0], {
+          radius: 5,
+          color: "#64748b",
+          fillColor: "#cbd5e1",
+          fillOpacity: 1
+        })
+          .bindPopup("起點")
+          .addTo(map);
+      }
+    }
+    const checkpointIcon = L.icon({
+      iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      iconRetinaUrl:
+        "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+      shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      iconSize: [12.5, 20.5],
+      iconAnchor: [6.25, 20.5],
+      popupAnchor: [1, -17],
+      shadowSize: [20.5, 20.5],
+      shadowAnchor: [6.25, 20.5]
+    });
+    (locs || []).forEach(function (loc, i) {
+      if (loc.lat == null || loc.lng == null) return;
+      const ll = [Number(loc.lat), Number(loc.lng)];
+      fitPts.push(ll);
+      L.marker(ll, { icon: checkpointIcon })
+        .bindPopup(
+          "<strong>" + esc(loc.name) + "</strong><br>檢查點 " + (i + 1)
+        )
+        .addTo(map);
+    });
+    if (fitPts.length) {
+      map.fitBounds(fitPts, { padding: [28, 28], maxZoom: 17 });
+    } else {
+      map.setView([22.21, 114.03], 13);
+    }
+    setTimeout(function () {
+      map.invalidateSize();
+    }, 100);
+  }
+
