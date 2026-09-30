@@ -43,7 +43,9 @@
           ' <span class="inline-flex items-center gap-1 text-[10px] font-medium text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5 ml-1"><i class="fa-solid fa-lock"></i> 須到達 GPS</span>';
       }
       let html =
-        '<label class="block text-sm font-semibold text-slate-800">' +
+        '<label class="block text-sm font-semibold text-slate-800" for="ans_' +
+        escapeAttr(q.id) +
+        '">' +
         (idx + 1) +
         ". " +
         escapeHtml(q.text) +
@@ -92,7 +94,10 @@
         html +=
           '<textarea data-qid="' +
           escapeAttr(q.id) +
-          '" rows="2" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…" ' +
+          '" id="ans_' +
+          escapeAttr(q.id) +
+          '" rows="3" inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="on" autocapitalize="sentences" ' +
+          'class="answer-input w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="請輸入短句答案…" ' +
           (fieldReadOnly ? "readonly" : "") +
           ">" +
           escapeHtml(saved) +
