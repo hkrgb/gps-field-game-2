@@ -1,0 +1,137 @@
+  async function clearProjectData() {
+    const pid = monitorProjectId || (currentProject && currentProject.id);
+    if (!pid) {
+      alert("請先開啟監察或編輯頁的專案。");
+      return;
+    }
+    const okAuth = await requireTeacherAuth("清除資料");
+    if (!okAuth) return;
+    const title =
+      (currentProject && currentProject.title) ||
+      (monitorCache && monitorCache.project && monitorCache.project.title) ||
+      pid;
+    const yes = confirm(
+      "確定清除「" +
+        title +
+        "」的運行資料？\n\n將刪除：所有提交答案、隊伍進度、GPS 軌跡與解鎖狀態。\n保留：地區／問題／隊伍帳號／專案設定。\n\n此操作不可復原。"
+    );
+    if (!yes) return;
+    const yes2 = confirm("再確認一次：真的要清除此專案的提交與 GPS 資料？");
+    if (!yes2) return;
+    StudentUI.showLoading(true);
+    try {
+      const result = await withTimeout(
+        DataStore.clearProjectRuntimeData(pid),
+        30000,
+        "清除資料"
+      );
+      alert(
+        "已清除。提交：" +
+          (result.submissionsCleared != null
+            ? result.submissionsCleared
+            : "完成") +
+          "；隊伍進度重設：" +
+          (result.sessionsReset != null ? result.sessionsReset : "完成")
+      );
+      if (monitorProjectId === pid) await openMonitor(pid);
+    } catch (e) {
+      alert(writeErrorMessage(e, "清除失敗"));
+    } finally {
+      StudentUI.showLoading(false);
+    }
+  }
+
+
+  function downloadJsonFile(filename, obj) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], {
+      type: "application/json;charset=utf-8"
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(function () {
+      try {
+        URL.revokeObjectURL(a.href);
+      } catch (e) {}
+    }, 1500);
+  }
+
+  async function exportLocationsJson() {
+    if (!currentProject) {
+      alert("請先開啟專案");
+      return;
+    }
+    const authed = await requireTeacherAuth("匯出地區");
+    if (!authed) return;
+    const locs = sortedLocations().map(function (loc) {
+      return {
+        id: loc.id,
+        name: loc.name,
+        lat: loc.lat,
+        lng: loc.lng,
+        description: loc.description || "",
+        order: loc.order || 1,
+        images: loc.images || [],
+        requireGps: loc.requireGps !== false,
+        questions: loc.questions || []
+      };
+    });
+    const payload = {
+      format: "gps-field-game-locations",
+      version: 1,
+      projectSlug: currentProject.slug || "",
+      projectTitle: currentProject.title || "",
+      exportedAt: new Date().toISOString(),
+      locations: locs
+    };
+    const slug = (currentProject.slug || "project").replace(/[^\w\-]+/g, "_");
+    downloadJsonFile("locations-" + slug + ".json", payload);
+  }
+
+  function parseLocationsImport(raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      data = JSON.parse(raw);
+    }
+    let list = null;
+    if (Array.isArray(data)) list = data;
+    else if (data && Array.isArray(data.locations)) list = data.locations;
+    else throw new Error("JSON 格式不正確：需要 locations 陣列");
+    return list.map(function (loc, i) {
+      if (!loc || typeof loc !== "object") {
+        throw new Error("第 " + (i + 1) + " 筆地區無效");
+      }
+      const qs = Array.isArray(loc.questions) ? loc.questions : [];
+      let requireGps = true;
+      if (typeof loc.requireGps === "boolean") {
+        requireGps = loc.requireGps;
+      } else if (
+        qs.length &&
+        qs.every(function (q) {
+          return q && q.requireGps === false;
+        })
+      ) {
+        requireGps = false;
+      }
+      return {
+        id: loc.id || null,
+        name: loc.name || "新地區",
+        lat: Number(loc.lat) || 0,
+        lng: Number(loc.lng) || 0,
+        description: loc.description || "",
+        order: loc.order != null ? Number(loc.order) : i + 1,
+        images: Array.isArray(loc.images) ? loc.images : [],
+        requireGps: requireGps,
+        questions: qs.map(function (q, qi) {
+          if (!q || typeof q !== "object") {
+            throw new Error("第 " + (i + 1) + " 筆地區第 " + (qi + 1) + " 題無效");
+          }
+          const out = Object.assign({}, q);
+          // keep legacy field if present but student lock uses location.requireGps
+          return out;
+        })
+      };
+    });
+  }
+
