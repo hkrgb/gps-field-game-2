@@ -1,1 +1,1 @@
-2026-09-30 08:28 HKT iOS keyboard + teacher monitor auth 20260930a
+2026-10-01 19:55 HKT Teacher-only submissions read + iOS monitor re-login resume 20261001b
