@@ -47,6 +47,23 @@
         if (redirected) {
           sessionStorage.removeItem("gpsgame2_pending_teacher_redirect");
           await TeacherUI.start(redirected);
+          var pendingMon = null;
+          try {
+            pendingMon = sessionStorage.getItem("gpsgame2_pending_monitor");
+          } catch (ePm) {}
+          if (!pendingMon) {
+            var hm = (window.location.hash || "").match(
+              /^#\/teacher\/monitor\/([^/?#]+)/
+            );
+            if (hm) pendingMon = hm[1];
+          }
+          if (pendingMon) {
+            try {
+              sessionStorage.removeItem("gpsgame2_pending_monitor");
+            } catch (ePm2) {}
+            await TeacherUI.openMonitor(pendingMon);
+            return;
+          }
           routeFromHash();
           return;
         }
@@ -75,6 +92,23 @@
         return;
       }
       await TeacherUI.start(session);
+      var pendingMon2 = null;
+      try {
+        pendingMon2 = sessionStorage.getItem("gpsgame2_pending_monitor");
+      } catch (ePm3) {}
+      if (!pendingMon2) {
+        var hm2 = (window.location.hash || "").match(
+          /^#\/teacher\/monitor\/([^/?#]+)/
+        );
+        if (hm2) pendingMon2 = hm2[1];
+      }
+      if (pendingMon2) {
+        try {
+          sessionStorage.removeItem("gpsgame2_pending_monitor");
+        } catch (ePm4) {}
+        await TeacherUI.openMonitor(pendingMon2);
+        return;
+      }
       routeFromHash();
       return;
     }
