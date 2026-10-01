@@ -1,4 +1,19 @@
-  async function forceTeacherReloginForMonitor(msg) {
+  /** Hard re-login for Monitor when Firebase Auth missing; prefer immediate Google login (iOS redirect). */
+  async function forceTeacherReloginForMonitor(msg, projectId) {
+    var pid = projectId || monitorProjectId || null;
+    if (!pid) {
+      try {
+        var hm = (window.location.hash || "").match(
+          /^#\/teacher\/monitor\/([^/?#]+)/
+        );
+        if (hm) pid = hm[1];
+      } catch (e0) {}
+    }
+    if (pid) {
+      try {
+        sessionStorage.setItem("gpsgame2_pending_monitor", pid);
+      } catch (e1) {}
+    }
     alert(
       msg ||
         "監察需要有效的 Google 登入（讀取提交紀錄）。請重新以 Google 登入後再按監察。"
@@ -6,6 +21,27 @@
     try {
       await Auth.logout();
     } catch (e) {}
+    // Prefer immediate Google login (redirect on iOS) rather than only bouncing to landing.
+    try {
+      var newSess = await Auth.loginTeacherGoogle();
+      if (newSess) {
+        session = newSess;
+        if (pid) {
+          try {
+            sessionStorage.removeItem("gpsgame2_pending_monitor");
+          } catch (e2) {}
+          await openMonitor(pid);
+          return;
+        }
+        await start(newSess);
+        return;
+      }
+    } catch (loginErr) {
+      alert(
+        (loginErr && loginErr.message) ||
+          "重新登入失敗，請從首頁再試「老師 Google 登入」。"
+      );
+    }
     if (typeof window.showLandingFromTeacher === "function") {
       window.showLandingFromTeacher();
     } else {
@@ -13,29 +49,30 @@
       StudentUI.showView("view-landing");
       window.location.hash = "#/";
     }
-    // Switch landing to admin tab if present
     try {
       var adminTab = document.querySelector('[data-login-tab="admin"]');
       if (adminTab) adminTab.click();
-    } catch (e2) {}
+    } catch (e3) {}
   }
 
   async function openMonitor(projectId) {
     StudentUI.showLoading(true);
     try {
-      // Strong auth: force retry of Firebase restore (iOS IndexedDB can lag).
+      // Strong auth: submissions read requires isSignedIn() — force Firebase restore.
       const authed = await Auth.ensureTeacherAuth({ force: true });
       if (!authed) {
         await forceTeacherReloginForMonitor(
-          "登入狀態已過期或未還原，請重新以 Google 登入後再監察。"
+          "登入狀態已過期或未還原，請重新以 Google 登入後再監察。",
+          projectId
         );
         return;
       }
       // Edit UI can load without Auth (public reads). Monitor needs Auth for
-      // submissions — require a live firebase.auth().currentUser.
+      // submissions — require a live firebase.auth().currentUser (non-demo).
       if (!authed.demo && Auth.getFirebaseUser && !Auth.getFirebaseUser()) {
         await forceTeacherReloginForMonitor(
-          "Google 登入尚未還原（iPhone 常見）。請再按「老師 Google 登入」後開啟監察。"
+          "Google 登入尚未還原（iPhone 常見）。請再按「老師 Google 登入」後開啟監察。",
+          projectId
         );
         return;
       }
@@ -114,6 +151,9 @@
         locations: sortedLocs,
         submissions: submissions
       };
+      try {
+        sessionStorage.removeItem("gpsgame2_pending_monitor");
+      } catch (e4) {}
       window.location.hash = "#/teacher/monitor/" + projectId;
     } catch (e) {
       if (Auth.isPermissionError && Auth.isPermissionError(e)) {
@@ -122,12 +162,18 @@
         );
         if (retry) {
           try {
+            sessionStorage.setItem("gpsgame2_pending_monitor", projectId);
+          } catch (eSet) {}
+          try {
             await Auth.logout();
           } catch (e2) {}
           try {
-            await Auth.loginTeacherGoogle();
-            // If redirect, page navigates away; if popup, restart monitor
-            if (Auth.getFirebaseUser && Auth.getFirebaseUser()) {
+            var sess2 = await Auth.loginTeacherGoogle();
+            if (sess2 && Auth.getFirebaseUser && Auth.getFirebaseUser()) {
+              session = sess2;
+              try {
+                sessionStorage.removeItem("gpsgame2_pending_monitor");
+              } catch (eClr) {}
               await openMonitor(projectId);
               return;
             }
