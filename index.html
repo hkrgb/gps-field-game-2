@@ -1,1 +1,162 @@
-<!DOCTYPE html><html lang="zh-HK"><head><meta charset="UTF-8"><title>loading</title></head><body><script>location.replace('https://raw.githack.com/hkrgb/gps-field-game-2/main/index.full.html')</script><p>Redirecting…</p></body></html>
+<!DOCTYPE html>
+<html lang="zh-HK"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#047857"><title>GPS 實地考察遊戲 2.0</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="css/app.css?v=20261001b">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 pb-20">
+<header id="appHeader" class="hidden bg-emerald-700 text-white shadow sticky top-0 z-50">
+<div id="headerInner" class="max-w-md mx-auto px-3 py-2 flex justify-between items-center">
+<button id="btnHome" type="button" class="w-9 h-9 rounded-lg bg-white/15"><i class="fa-solid fa-house"></i></button>
+<div><div id="headerUserName" class="font-bold text-sm">—</div><div id="progressSquares" class="flex gap-1"></div></div>
+<span id="demoBadge" class="hidden text-[10px] bg-amber-400 text-amber-950 px-1 rounded">DEMO</span>
+<button id="btnCompletion" type="button" class="hidden bg-amber-400 text-xs px-2 py-1 rounded">完成</button>
+<button id="btnLogout" type="button" class="bg-white/15 text-xs px-2 py-1 rounded"><i class="fa-solid fa-right-from-bracket"></i></button>
+</div></header>
+<div id="bootLoading" class="text-center py-24"><i class="fa-solid fa-spinner fa-spin text-3xl text-emerald-600"></i><p class="text-sm">載入中…</p></div>
+<main id="mainContainer" class="px-4 pt-4">
+<section id="view-landing" class="hidden">
+<h1 class="text-xl font-bold text-center mb-4">GPS 實地考察遊戲</h1>
+<div class="flex gap-2 mb-3">
+<button type="button" data-login-tab="team" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold">隊伍登入</button>
+<button type="button" data-login-tab="admin" class="flex-1 py-2 rounded-xl bg-slate-100 text-sm font-semibold">管理員</button>
+</div>
+<div id="panelTeam"><form id="teamLoginForm" class="space-y-2 text-sm">
+<input id="teamSlug" required placeholder="專案代碼" class="w-full border rounded-lg px-3 py-2">
+<input id="teamName" required placeholder="隊伍名稱" class="w-full border rounded-lg px-3 py-2">
+<input id="teamPassword" type="password" required placeholder="密碼" class="w-full border rounded-lg px-3 py-2">
+<p id="teamLoginError" class="hidden text-xs text-rose-600"></p>
+<button type="submit" class="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-semibold">開始考察</button>
+</form></div>
+<div id="panelAdmin" class="hidden space-y-2">
+<button type="button" id="btnTeacherLogin" class="w-full py-2.5 bg-slate-800 text-white rounded-xl text-sm"><i class="fa-brands fa-google"></i> 老師 Google 登入</button>
+<p id="adminLoginError" class="hidden text-xs text-rose-600"></p>
+</div>
+</section>
+<section id="view-hub" class="hidden space-y-2">
+<h2 id="hubTitle" class="font-bold">考察任務</h2><p id="hubSubtitle" class="text-xs text-slate-500"></p>
+<button id="btnRefreshGps" type="button" class="text-xs bg-slate-200 px-2 py-1 rounded">刷新定位</button>
+<div id="gpsBanner" class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-xs"><i class="fa-solid fa-spinner fa-spin" id="gpsIcon"></i> <span id="gpsMessage">GPS…</span></div>
+<div id="hubCards" class="space-y-2"></div>
+</section>
+<section id="view-location" class="hidden space-y-2">
+<div id="locInfoCard" class="bg-white border rounded-xl p-3"><div class="flex justify-between"><h2 id="locPageTitle" class="font-bold"></h2><button id="btnBackHub" type="button"><i class="fa-solid fa-xmark"></i></button></div>
+<p id="locPageDesc" class="text-sm"></p><div id="locPageImages"></div></div>
+<div id="locLockBanner" class="bg-amber-50 border rounded-xl p-3 text-sm"><p id="locLockMsg"></p></div>
+<div id="locQuestionsSection" class="hidden bg-white border rounded-xl p-3 space-y-2">
+<div id="locLockedNote" class="hidden text-xs">已鎖定</div>
+<div id="locQuestions"></div>
+<button id="btnSubmitLoc" type="button" class="w-full py-2 bg-emerald-600 text-white rounded-xl text-sm">提交</button>
+</div></section>
+<section id="view-completion" class="hidden space-y-2">
+<div id="completionImages"></div><div id="completionTrophy"></div>
+<h2 id="completionTitle" class="font-bold text-center">恭喜完成！</h2>
+<p id="completionCongrats" class="text-sm text-center"></p>
+<div id="completionSummary"></div>
+<button id="btnCompletionBack" type="button" class="w-full py-2 bg-emerald-600 text-white rounded-xl text-sm">返回</button>
+</section>
+<section id="view-teacher" class="hidden space-y-3">
+<div id="teacherProjects" class="space-y-2">
+<div class="flex justify-between"><h2 class="font-bold">共用專案</h2><button id="btnNewProject" type="button" class="text-xs bg-emerald-600 text-white px-2 py-1 rounded">+ 新增</button></div>
+<div id="projectList"></div></div>
+<div id="teacherEditor" class="hidden space-y-2">
+<button id="btnBackProjects" type="button" class="text-xs text-emerald-700">← 專案列表</button>
+<div class="bg-white border rounded-xl p-3 space-y-2 text-xs">
+<div class="flex gap-1">
+<button id="edTab_settings" type="button" class="flex-1 py-1.5 rounded bg-emerald-600 text-white">設定</button>
+<button id="edTab_locations" type="button" class="flex-1 py-1.5 rounded bg-slate-100">地區</button>
+<button id="edTab_teams" type="button" class="flex-1 py-1.5 rounded bg-slate-100">隊伍</button>
+</div>
+<div id="edPanel_settings" class="space-y-2">
+<input id="edTitle" class="w-full border rounded px-2 py-1" placeholder="標題">
+<input id="edSubtitle" class="w-full border rounded px-2 py-1" placeholder="副標題">
+<input id="edSlug" class="w-full border rounded px-2 py-1 font-mono" placeholder="slug">
+<input id="edRadius" type="number" class="w-full border rounded px-2 py-1" placeholder="GPS米">
+<select id="edFont" class="w-full border rounded px-2 py-1"><option value="sm">較小</option><option value="base">標準</option><option value="lg">較大</option></select>
+<label class="flex justify-between">測試模式<input id="edTestMode" type="checkbox"></label>
+<input id="edCompletionTitle" class="w-full border rounded px-2 py-1" placeholder="完成標題">
+<textarea id="edCompletionMessage" rows="2" class="w-full border rounded px-2 py-1" placeholder="完成訊息"></textarea>
+<textarea id="edCompletionImages" rows="1" class="w-full border rounded px-2 py-1" placeholder="完成圖片URL"></textarea>
+<label class="flex justify-between">顯示統計<input id="edCompletionShowStats" type="checkbox" checked></label>
+<input id="edFooterSchoolName" class="w-full border rounded px-2 py-1" placeholder="學校名稱">
+<input id="edFooterSchoolUrl" class="w-full border rounded px-2 py-1" placeholder="學校網址">
+<input id="edFooterDisclaimerLabel" class="w-full border rounded px-2 py-1" placeholder="免責連結">
+<textarea id="edFooterDisclaimerText" rows="2" class="w-full border rounded px-2 py-1" placeholder="免責內容"></textarea>
+<button id="btnSaveSettings" type="button" class="w-full py-2 bg-emerald-600 text-white rounded-xl">儲存設定</button>
+<button id="btnClearProjectDataEditor" type="button" class="w-full py-2 bg-rose-50 text-rose-700 border rounded-xl">清除資料</button>
+</div>
+<div id="edPanel_locations" class="hidden space-y-2">
+<button id="btnExportLocs" type="button" class="text-xs border px-2 py-1 rounded">匯出</button>
+<button id="btnImportLocs" type="button" class="text-xs border px-2 py-1 rounded">匯入</button>
+<button id="btnAddLoc" type="button" class="text-xs bg-emerald-600 text-white px-2 py-1 rounded">+ 地區</button>
+<input id="importLocsFile" type="file" accept=".json,text/plain" class="hidden">
+<div id="edLocList"></div></div>
+<div id="edPanel_teams" class="hidden space-y-2">
+<button id="btnExportTeams" type="button" class="text-xs border px-2 py-1 rounded">匯出</button>
+<button id="btnImportTeams" type="button" class="text-xs border px-2 py-1 rounded">匯入</button>
+<button id="btnAddTeam" type="button" class="text-xs bg-emerald-600 text-white px-2 py-1 rounded">+ 隊伍</button>
+<input id="importTeamsFile" type="file" accept=".json,text/plain" class="hidden">
+<div id="edTeamList"></div></div>
+</div></div>
+<div id="teacherMonitor" class="hidden space-y-2">
+<button id="btnBackProjects2" type="button" class="text-xs text-emerald-700">← 專案列表</button>
+<div class="flex gap-1 flex-wrap">
+<button id="btnRefreshMonitor" type="button" class="text-xs border px-2 py-1 rounded">重新整理</button>
+<button id="btnExportCsv" type="button" class="text-xs bg-blue-600 text-white px-2 py-1 rounded">匯出 CSV</button>
+<button id="btnClearProjectData" type="button" class="text-xs bg-rose-600 text-white px-2 py-1 rounded">清除資料</button>
+</div>
+<h2 id="monTitle" class="font-bold">監察</h2>
+<div id="monSessions" class="space-y-2"></div>
+<div id="monTeamDetail" class="hidden bg-slate-50 border rounded-xl p-3"></div>
+<div id="monSubmissions" class="hidden"></div>
+</div>
+</section>
+</main>
+<div id="locModal" class="hidden fixed inset-0 bg-slate-900/60 z-[70] flex items-center justify-center p-4">
+<div class="bg-white rounded-2xl max-w-md w-full p-4 max-h-[90vh] overflow-y-auto space-y-2 text-xs">
+<div class="flex justify-between"><h3 id="locModalTitle" class="font-bold">編輯地區</h3><button id="btnCloseLocModal" type="button"><i class="fa-solid fa-xmark"></i></button></div>
+<input id="lmName" class="w-full border rounded px-2 py-1" placeholder="名稱">
+<textarea id="lmDesc" rows="2" class="w-full border rounded px-2 py-1" placeholder="簡介"></textarea>
+<input id="lmLat" type="number" step="any" class="w-full border rounded px-2 py-1" placeholder="lat">
+<input id="lmLng" type="number" step="any" class="w-full border rounded px-2 py-1" placeholder="lng">
+<input id="lmOrder" type="number" class="w-full border rounded px-2 py-1" placeholder="排序">
+<select id="lmRequireGps" class="w-full border rounded px-2 py-1"><option value="true">須到達 GPS</option><option value="false">不須到達</option></select>
+<textarea id="lmImages" rows="1" class="w-full border rounded px-2 py-1" placeholder="圖片URL"></textarea>
+<div id="lmQuestions"></div>
+<button id="btnAddQuestion" type="button" class="text-emerald-600">+ 問題</button>
+<div class="flex gap-2"><button id="btnCancelLocModal" type="button" class="flex-1 py-2 bg-slate-100 rounded-xl">取消</button>
+<button id="btnSaveLocModal" type="button" class="flex-1 py-2 bg-emerald-600 text-white rounded-xl">儲存</button></div>
+</div></div>
+<footer id="siteFooter" class="site-footer"><div class="site-footer-inner">
+<a id="siteFooterSchoolLink" class="site-footer-school" href="https://www.caritasfsc.edu.hk/" target="_blank" rel="noopener">明愛陳震夏郊野學園</a>
+<button type="button" id="siteFooterDisclaimerBtn" class="site-footer-disclaimer">免責條款</button>
+</div></footer>
+<div id="disclaimerModal" class="hidden fixed inset-0 bg-slate-900/50 z-[70] flex items-center justify-center p-4">
+<div class="bg-white rounded-2xl p-4 max-w-md space-y-2">
+<h3 id="disclaimerModalTitle" class="font-bold">免責條款</h3>
+<button id="disclaimerModalClose" type="button" class="absolute top-2 right-2" aria-label="關閉"></button>
+<p id="disclaimerModalBody" class="text-xs">本活動位置資料僅作教學用途。</p>
+<button id="disclaimerModalOk" type="button" class="w-full py-2 bg-emerald-600 text-white rounded-xl text-sm">知道了</button>
+</div></div>
+<div id="globalLoading" class="hidden fixed inset-0 bg-slate-900/50 z-[60] flex items-center justify-center">
+<div class="bg-white rounded-2xl px-6 py-4"><i class="fa-solid fa-spinner fa-spin text-emerald-600"></i><p class="text-xs mt-1">處理中…</p></div></div>
+<div id="imgLightbox" class="img-lightbox hidden"><button type="button" id="imgLightboxClose" class="img-lightbox-close"><i class="fa-solid fa-xmark"></i></button><img id="imgLightboxImg" src="" alt=""></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/gps.js?v=20261001b"></script>
+<script src="js/data.js?v=20261001b"></script>
+<script src="js/auth.js?v=20261001b"></script>
+<script src="js/student.js?v=20261001b"></script>
+<script src="js/teacher.js?v=20261001b"></script>
+<script src="js/completion-page.js?v=20261001b"></script>
+<script src="js/site-footer.js?v=20261001b"></script>
+<script src="js/seed-kc-project.js"></script>
+<script src="js/app.js?v=20261001b"></script>
+</body></html>
