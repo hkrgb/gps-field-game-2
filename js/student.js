@@ -9,7 +9,7 @@
     }
     return xhr.responseText;
   }
-  var v = "?v=20260930a";
+  var v = "?v=20261001b";
   var code =
     loadText("js/student.p1a-head.txt" + v) +
     loadText("js/student.p1a-tail-a.txt" + v) +
